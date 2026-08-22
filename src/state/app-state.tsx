@@ -1,0 +1,1312 @@
+import * as SecureStore from 'expo-secure-store';
+import * as Linking from 'expo-linking';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  createContext,
+  type PropsWithChildren,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { Platform } from 'react-native';
+
+import { haptics } from '@/lib/haptics';
+import { createHandoffDeadline, maskPhone } from '@/lib/item-utils';
+import { initialClaims, initialItems } from '@/lib/mock-data';
+import {
+  acceptRemoteCustody,
+  completeRemoteReturn,
+  createRemoteClaim,
+  createRemoteReport,
+  createRemoteUniversityCode,
+  fetchCampusUser,
+  fetchRemoteSnapshot,
+  flagRemoteItem,
+  issueRemoteHandoffCode,
+  markRemoteNotificationRead,
+  revealRemoteContact,
+  reviewRemoteClaim,
+  reviewRemoteFlag,
+  type RemoteFlagReviewStatus,
+  type RemoteItemFlag,
+  type RemoteNotification,
+} from '@/lib/strathfind-api';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import type {
+  CampusUser,
+  Claim,
+  ItemStatus,
+  LostFoundItem,
+  ReportDraft,
+  UserRole,
+} from '@/lib/types';
+
+const DEMO_SESSION_KEY = 'strathfind.demo-session.v1';
+export const DEMO_UNIVERSITY_CODE = 'SF-DEMO-2026';
+
+export type PublicItem = Omit<LostFoundItem, 'holderPhone'> & {
+  maskedPhone: string;
+};
+
+type StateItem = LostFoundItem & { maskedPhone?: string };
+
+export type ActivityKind = 'report' | 'claim' | 'contact' | 'handoff' | 'status' | 'match';
+
+export interface ActivityEntry {
+  id: string;
+  kind: ActivityKind;
+  title: string;
+  message: string;
+  itemId?: string;
+  createdAt: string;
+  read: boolean;
+  audienceIds: string[];
+}
+
+export interface ToastMessage {
+  id: string;
+  tone: 'success' | 'warning' | 'error' | 'info';
+  message: string;
+}
+
+export interface SignInInput {
+  email: string;
+  password: string;
+  role: UserRole;
+}
+
+export interface SignUpInput {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  campusId: string;
+  universityCode: string;
+}
+
+export type ActionResult<T = undefined> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
+
+export interface AppStateValue {
+  mode: 'demo' | 'supabase';
+  user: CampusUser | null;
+  role: UserRole | null;
+  isAuthenticated: boolean;
+  loading: boolean;
+  toast: ToastMessage | null;
+  items: PublicItem[];
+  claims: Claim[];
+  activity: ActivityEntry[];
+  notifications: ActivityEntry[];
+  currentUserItems: PublicItem[];
+  currentUserActivity: ActivityEntry[];
+  revealedContactIds: string[];
+  flags: RemoteItemFlag[];
+  flaggedItemIds: string[];
+  signIn: (input: SignInInput) => Promise<ActionResult<CampusUser>>;
+  signUp: (input: SignUpInput) => Promise<ActionResult<CampusUser | null>>;
+  signOut: () => Promise<void>;
+  createReport: (draft: ReportDraft) => Promise<ActionResult<PublicItem>>;
+  claimItem: (itemId: string, proof: string) => Promise<ActionResult<Claim>>;
+  reviewClaim: (claimId: string, approve: boolean, note?: string) => Promise<ActionResult<Claim>>;
+  revealContact: (itemId: string) => Promise<ActionResult<string>>;
+  flagItem: (itemId: string, reason?: string) => Promise<ActionResult>;
+  reviewFlag: (
+    flagId: string,
+    status: RemoteFlagReviewStatus,
+    note: string,
+  ) => Promise<ActionResult<RemoteItemFlag>>;
+  getHandoffCode: (itemId: string) => Promise<ActionResult<string>>;
+  createUniversityCode: () => Promise<ActionResult<string>>;
+  updateItemStatus: (itemId: string, status: ItemStatus) => Promise<ActionResult<PublicItem>>;
+  recordCustodyHandoff: (itemId: string, handoffPoint?: string, code?: string) => Promise<ActionResult<PublicItem>>;
+  markNotificationRead: (activityId: string) => void;
+  dismissToast: () => void;
+  getItem: (itemId: string) => PublicItem | undefined;
+}
+
+const AppStateContext = createContext<AppStateValue | null>(null);
+
+const demoStudent: CampusUser = {
+  id: 'student-demo',
+  name: 'Amina Kamau',
+  email: 'amina@strathmore.edu',
+  phone: '+254 712 884 042',
+  role: 'student',
+  university: 'Strathmore University',
+  campusId: '151234',
+};
+
+const demoAdmin: CampusUser = {
+  id: 'admin-demo',
+  name: 'Campus Services',
+  email: 'lostandfound@strathmore.edu',
+  phone: '+254 703 034 000',
+  role: 'admin',
+  university: 'Strathmore University',
+  campusId: 'ADMIN-01',
+};
+
+const initialActivity: ActivityEntry[] = [
+  {
+    id: 'activity-match-calculus',
+    kind: 'match',
+    title: 'Possible match',
+    message: 'A report may match your calculus textbook.',
+    itemId: 'calculus-textbook',
+    createdAt: new Date(Date.now() - 36 * 60_000).toISOString(),
+    read: false,
+    audienceIds: ['student-demo'],
+  },
+  {
+    id: 'activity-office-card',
+    kind: 'handoff',
+    title: 'Handoff recorded',
+    message: 'The student card is now at the main gate security desk.',
+    itemId: 'student-card-block-a',
+    createdAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    read: true,
+    audienceIds: ['student-demo', 'admin-demo'],
+  },
+  {
+    id: 'activity-admin-due',
+    kind: 'handoff',
+    title: 'Handoff due soon',
+    message: 'The keys report reaches its 24-hour deadline shortly.',
+    itemId: 'keys-sports-field',
+    createdAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+    read: false,
+    audienceIds: ['admin-demo'],
+  },
+];
+
+function uniqueId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function actionError(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function normalizeE164(value: string) {
+  let normalized = value.trim().replace(/[\s().-]/g, '');
+  if (normalized.startsWith('00')) normalized = `+${normalized.slice(2)}`;
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
+}
+
+function handoffCodeFor(itemId: string) {
+  const value = [...itemId].reduce((total, character) => ((total * 31) + character.charCodeAt(0)) % 900000, 0);
+  return String(100000 + value).slice(-6);
+}
+
+function toPublicItem(item: StateItem): PublicItem {
+  const { holderPhone, maskedPhone, ...safeItem } = item;
+  return { ...safeItem, maskedPhone: maskedPhone ?? maskPhone(holderPhone) };
+}
+
+function notificationKind(notification: RemoteNotification): ActivityKind {
+  if (notification.kind.startsWith('claim_')) return 'claim';
+  if (notification.kind === 'contact_revealed' || notification.kind === 'audit_contact') return 'contact';
+  if (notification.kind.startsWith('handoff_') || ['admin_custody', 'audit_handoff'].includes(notification.kind)) return 'handoff';
+  if (notification.kind === 'item_returned' || notification.kind === 'audit_status') return 'status';
+  return 'match';
+}
+
+async function sessionMatchesUser(client: SupabaseClient, expectedUserId: string) {
+  try {
+    const { data, error } = await client.auth.getSession();
+    return !error && data.session?.user.id === expectedUserId;
+  } catch {
+    return false;
+  }
+}
+
+async function readDemoSession(): Promise<CampusUser | null> {
+  try {
+    const value =
+      Platform.OS === 'web'
+        ? globalThis.localStorage?.getItem(DEMO_SESSION_KEY)
+        : await SecureStore.getItemAsync(DEMO_SESSION_KEY);
+    return value ? (JSON.parse(value) as CampusUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeDemoSession(user: CampusUser | null) {
+  try {
+    if (Platform.OS === 'web') {
+      if (user) globalThis.localStorage?.setItem(DEMO_SESSION_KEY, JSON.stringify(user));
+      else globalThis.localStorage?.removeItem(DEMO_SESSION_KEY);
+      return;
+    }
+    if (user) await SecureStore.setItemAsync(DEMO_SESSION_KEY, JSON.stringify(user));
+    else await SecureStore.deleteItemAsync(DEMO_SESSION_KEY);
+  } catch {
+    // Persistence is convenient in demo mode, but auth must still work without it.
+  }
+}
+
+export function AppStateProvider({ children }: PropsWithChildren) {
+  const [user, setUser] = useState<CampusUser | null>(null);
+  const [rawItems, setRawItems] = useState<StateItem[]>(() => (
+    isSupabaseConfigured ? [] : initialItems.map((item) => ({ ...item }))
+  ));
+  const [rawClaims, setRawClaims] = useState<Claim[]>(() => (
+    isSupabaseConfigured ? [] : initialClaims.map((claim) => ({ ...claim }))
+  ));
+  const [activity, setActivity] = useState<ActivityEntry[]>(() => (
+    isSupabaseConfigured ? [] : initialActivity
+  ));
+  const [revealedContactIds, setRevealedContactIds] = useState<string[]>([]);
+  const [rawFlags, setRawFlags] = useState<RemoteItemFlag[]>([]);
+  const [flaggedItemIds, setFlaggedItemIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  const showToast = useCallback((message: string, tone: ToastMessage['tone'] = 'info') => {
+    setToast({ id: uniqueId('toast'), message, tone });
+  }, []);
+
+  const clearRemoteState = useCallback(() => {
+    setUser(null);
+    setRawItems([]);
+    setRawClaims([]);
+    setActivity([]);
+    setRawFlags([]);
+    setFlaggedItemIds([]);
+    setRevealedContactIds([]);
+  }, []);
+
+  const discardRemoteSession = useCallback(async (expectedUserId: string) => {
+    if (!supabase || !(await sessionMatchesUser(supabase, expectedUserId))) return;
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      // State is still cleared below so a rejected session cannot authorize this client.
+    } finally {
+      clearRemoteState();
+    }
+  }, [clearRemoteState]);
+
+  const loadRemoteState = useCallback(async (currentUser: CampusUser) => {
+    if (!supabase) return null;
+    const snapshot = await fetchRemoteSnapshot(supabase, currentUser.id, currentUser.role === 'admin');
+    if (!(await sessionMatchesUser(supabase, currentUser.id))) return null;
+    setRawItems(snapshot.items);
+    setRawClaims(snapshot.claims);
+    setRawFlags(snapshot.flags);
+    setFlaggedItemIds(snapshot.flaggedItemIds);
+    setActivity(snapshot.notifications.map((notification) => ({
+      id: notification.id,
+      kind: notificationKind(notification),
+      title: notification.title,
+      message: notification.message,
+      itemId: notification.itemId,
+      createdAt: notification.createdAt,
+      read: notification.read,
+      audienceIds: [currentUser.id],
+    })));
+    return snapshot;
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const remoteClient = supabase;
+
+    async function hydrateSession() {
+      let expectedUserId: string | undefined;
+      try {
+        if (remoteClient) {
+          const { data } = await remoteClient.auth.getSession();
+          if (data.session?.user) {
+            expectedUserId = data.session.user.id;
+            if (!(await sessionMatchesUser(remoteClient, expectedUserId))) return;
+            const resolvedUser = await fetchCampusUser(remoteClient, data.session.user);
+            if (!active || !(await sessionMatchesUser(remoteClient, expectedUserId))) return;
+            const snapshot = await loadRemoteState(resolvedUser);
+            if (
+              snapshot
+              && active
+              && await sessionMatchesUser(remoteClient, expectedUserId)
+            ) {
+              setUser(resolvedUser);
+            }
+          } else if (active) {
+            const { data: latest } = await remoteClient.auth.getSession();
+            if (active && !latest.session) clearRemoteState();
+          }
+        } else {
+          const stored = await readDemoSession();
+          if (active) setUser(stored);
+        }
+      } catch {
+        if (
+          active
+          && remoteClient
+          && expectedUserId
+          && await sessionMatchesUser(remoteClient, expectedUserId)
+        ) {
+          clearRemoteState();
+        } else if (active) {
+          if (!remoteClient) setUser(null);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void hydrateSession();
+    const subscription = remoteClient?.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      if (!session?.user) {
+        clearRemoteState();
+        return;
+      }
+      const expectedUserId = session.user.id;
+      setUser((current) => (current?.id === expectedUserId ? current : null));
+      setRevealedContactIds([]);
+      // Supabase recommends deferring client queries until the auth callback has returned.
+      setTimeout(() => {
+        void sessionMatchesUser(remoteClient, expectedUserId)
+          .then((matches) => {
+            if (!matches) return null;
+            return fetchCampusUser(remoteClient, session.user);
+          })
+          .then(async (resolved) => {
+            if (!resolved || !active || !(await sessionMatchesUser(remoteClient, expectedUserId))) return;
+            const snapshot = await loadRemoteState(resolved);
+            if (
+              snapshot
+              && active
+              && await sessionMatchesUser(remoteClient, expectedUserId)
+            ) {
+              setUser(resolved);
+            }
+          })
+          .catch(async () => {
+            if (active && await sessionMatchesUser(remoteClient, expectedUserId)) setUser(null);
+          });
+      }, 0);
+    });
+
+    return () => {
+      active = false;
+      subscription?.data.subscription.unsubscribe();
+    };
+  }, [clearRemoteState, loadRemoteState]);
+
+  useEffect(() => {
+    if (!supabase || !user) return;
+    const interval = setInterval(() => {
+      void loadRemoteState(user).catch(() => {
+        // Keep the last safe snapshot while the connection recovers.
+      });
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [loadRemoteState, user]);
+
+  const signIn = useCallback(
+    async ({ email, password, role }: SignInInput): Promise<ActionResult<CampusUser>> => {
+      let establishedSessionUserId: string | null = null;
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail || !password) {
+        const error = 'Enter your email and password.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+
+      setLoading(true);
+      try {
+        if (supabase) {
+          const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+          establishedSessionUserId = data.session?.user.id ?? null;
+          if (error || !data.user) {
+            if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
+            const message = error?.message ?? 'Sign in could not be completed.';
+            showToast(message, 'error');
+            return { ok: false, error: message };
+          }
+          const signedInUser = await fetchCampusUser(supabase, data.user);
+          if (signedInUser.role !== role) {
+            await discardRemoteSession(signedInUser.id);
+            const message = `This account does not have ${role} access.`;
+            showToast(message, 'error');
+            return { ok: false, error: message };
+          }
+          const snapshot = await loadRemoteState(signedInUser);
+          if (!snapshot || !(await sessionMatchesUser(supabase, signedInUser.id))) {
+            throw new Error('The authenticated session changed before sign in completed.');
+          }
+          setUser(signedInUser);
+          await haptics.confirm();
+          showToast('Welcome back.', 'success');
+          return { ok: true, data: signedInUser };
+        }
+
+        const signedInUser = role === 'admin'
+          ? { ...demoAdmin, email: normalizedEmail }
+          : { ...demoStudent, email: normalizedEmail };
+        setUser(signedInUser);
+        setRevealedContactIds([]);
+        setFlaggedItemIds(
+          rawFlags
+            .filter((flag) => flag.status === 'open' && flag.submittedBy === signedInUser.id)
+            .map((flag) => flag.itemId),
+        );
+        await writeDemoSession(signedInUser);
+        await haptics.confirm();
+        showToast('Welcome back.', 'success');
+        return { ok: true, data: signedInUser };
+      } catch {
+        if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
+        const error = 'Sign in is temporarily unavailable. Try again.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [discardRemoteSession, loadRemoteState, rawFlags, showToast],
+  );
+
+  const signUp = useCallback(
+    async (input: SignUpInput): Promise<ActionResult<CampusUser | null>> => {
+      let establishedSessionUserId: string | null = null;
+      const name = input.name.trim();
+      const email = input.email.trim().toLowerCase();
+      const universityCode = input.universityCode.trim().toUpperCase();
+      const phoneE164 = normalizeE164(input.phone);
+      if (!name || !email || !input.phone.trim() || !input.campusId.trim()) {
+        const error = 'Complete your student profile.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (!phoneE164) {
+        const error = 'Use an international mobile number, for example +254712345678.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (input.password.length < 8) {
+        const error = 'Use at least 8 characters for your password.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (!universityCode) {
+        const error = 'Enter your university code.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+
+      setLoading(true);
+      try {
+        if (supabase) {
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password: input.password,
+            options: {
+              emailRedirectTo: Linking.createURL('/auth-callback'),
+              data: {
+                display_name: name,
+                phone_e164: phoneE164,
+                student_number: input.campusId.trim(),
+                university_code: universityCode,
+              },
+            },
+          });
+          establishedSessionUserId = data.session?.user.id ?? null;
+          if (error) {
+            if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
+            showToast(error.message, 'error');
+            return { ok: false, error: error.message };
+          }
+          const signedUpUser = data.user && data.session ? await fetchCampusUser(supabase, data.user) : null;
+          if (signedUpUser) {
+            const snapshot = await loadRemoteState(signedUpUser);
+            if (!snapshot || !(await sessionMatchesUser(supabase, signedUpUser.id))) {
+              throw new Error('The authenticated session changed before signup completed.');
+            }
+            setUser(signedUpUser);
+          }
+          await haptics.confirm();
+          showToast(signedUpUser ? 'Account ready.' : 'Check your email to finish signup.', 'success');
+          return { ok: true, data: signedUpUser };
+        }
+
+        if (universityCode !== DEMO_UNIVERSITY_CODE) {
+          const error = `Use ${DEMO_UNIVERSITY_CODE} in demo mode.`;
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+        const signedUpUser: CampusUser = {
+          id: uniqueId('student'),
+          name,
+          email,
+          phone: phoneE164,
+          role: 'student',
+          university: 'Strathmore University',
+          campusId: input.campusId.trim(),
+        };
+        setUser(signedUpUser);
+        setRevealedContactIds([]);
+        setFlaggedItemIds([]);
+        await writeDemoSession(signedUpUser);
+        await haptics.confirm();
+        showToast('Account ready.', 'success');
+        return { ok: true, data: signedUpUser };
+      } catch {
+        if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
+        const error = 'Signup is temporarily unavailable. Try again.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [discardRemoteSession, loadRemoteState, showToast],
+  );
+
+  const signOut = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (supabase) await supabase.auth.signOut();
+      else await writeDemoSession(null);
+    } catch {
+      // Clear local access even when the remote session cannot be reached.
+    } finally {
+      if (supabase) clearRemoteState();
+      else {
+        setUser(null);
+        setRevealedContactIds([]);
+        setFlaggedItemIds([]);
+      }
+      showToast('Signed out.', 'info');
+      setLoading(false);
+    }
+  }, [clearRemoteState, showToast]);
+
+  const createReport = useCallback(
+    async (draft: ReportDraft): Promise<ActionResult<PublicItem>> => {
+      if (!user) {
+        const error = 'Sign in before publishing a report.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (!draft.title.trim() || !draft.location.trim() || !draft.privateClue.trim()) {
+        const error = 'Add a title, location, and private verification clue.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+
+      if (supabase) {
+        try {
+          const created = await createRemoteReport(supabase, user, draft);
+          const snapshot = await loadRemoteState(user);
+          const item = snapshot?.items.find((candidate) => candidate.id === created.itemId);
+          if (!item) throw new Error('The report was published but could not be refreshed.');
+          await haptics.confirm();
+          showToast(created.photoWarning ?? 'Report published.', created.photoWarning ? 'warning' : 'success');
+          return { ok: true, data: toPublicItem(item) };
+        } catch (cause) {
+          const error = actionError(cause, 'The report could not be published.');
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+      }
+
+      const now = new Date().toISOString();
+      const item: LostFoundItem = {
+        id: uniqueId('item'),
+        kind: draft.kind,
+        title: draft.title.trim(),
+        category: draft.category,
+        color: draft.color.trim(),
+        description: draft.description.trim(),
+        location: draft.location.trim(),
+        foundAt: draft.foundAt.toISOString(),
+        handoffDueAt: draft.kind === 'found' ? createHandoffDeadline(draft.foundAt) : undefined,
+        status: 'published',
+        holderName: user.name,
+        holderPhone: user.phone,
+        ownerId: draft.kind === 'lost' ? user.id : undefined,
+        finderId: draft.kind === 'found' ? user.id : undefined,
+        imageUri: draft.imageUri,
+        privateClue: draft.privateClue.trim(),
+        handoffPoint: draft.kind === 'found' ? draft.handoffPoint.trim() : undefined,
+        createdAt: now,
+      };
+      setRawItems((current) => [item, ...current]);
+      setActivity((current) => [
+        {
+          id: uniqueId('activity'),
+          kind: 'report',
+          title: 'Report published',
+          message: `${item.title} is now visible to verified students.`,
+          itemId: item.id,
+          createdAt: now,
+          read: false,
+          audienceIds: [user.id, 'admin-demo'],
+        },
+        ...current,
+      ]);
+      await haptics.confirm();
+      showToast('Report published.', 'success');
+      return { ok: true, data: toPublicItem(item) };
+    },
+    [loadRemoteState, showToast, user],
+  );
+
+  const claimItem = useCallback(
+    async (itemId: string, proof: string): Promise<ActionResult<Claim>> => {
+      if (!user) {
+        const error = 'Sign in to start a claim.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const item = rawItems.find((candidate) => candidate.id === itemId);
+      if (!item || item.status === 'returned') {
+        const error = 'This item is no longer available to claim.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (proof.trim().length < 10) {
+        const error = 'Add a specific detail only the owner would know.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const existing = rawClaims.find(
+        (claim) => claim.itemId === itemId && claim.claimantId === user.id && claim.status !== 'declined',
+      );
+      if (existing) return { ok: true, data: existing };
+
+      if (supabase) {
+        try {
+          const createdId = await createRemoteClaim(supabase, itemId, proof);
+          const snapshot = await loadRemoteState(user);
+          const claim = snapshot?.claims.find((candidate) => candidate.id === createdId);
+          if (!claim) throw new Error('The claim was sent but could not be refreshed.');
+          await haptics.confirm();
+          showToast('Claim sent securely.', 'success');
+          return { ok: true, data: claim };
+        } catch (cause) {
+          const error = actionError(cause, 'The claim could not be submitted.');
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+      }
+
+      const now = new Date().toISOString();
+      const claim: Claim = {
+        id: uniqueId('claim'),
+        itemId,
+        claimantId: user.id,
+        claimantName: user.name,
+        status: 'pending',
+        note: proof.trim(),
+        createdAt: now,
+      };
+      setRawClaims((current) => [claim, ...current]);
+      setRawItems((current) =>
+        current.map((candidate) =>
+          candidate.id === itemId ? { ...candidate, status: 'claim_pending' } : candidate,
+        ),
+      );
+      setActivity((current) => [
+        {
+          id: uniqueId('activity'),
+          kind: 'claim',
+          title: 'Claim sent',
+          message: `Your verification for ${item.title} is ready for review.`,
+          itemId,
+          createdAt: now,
+          read: false,
+          audienceIds: [user.id, item.finderId, item.ownerId, 'admin-demo'].filter(Boolean) as string[],
+        },
+        ...current,
+      ]);
+      await haptics.confirm();
+      showToast('Claim sent securely.', 'success');
+      return { ok: true, data: claim };
+    },
+    [loadRemoteState, rawClaims, rawItems, showToast, user],
+  );
+
+  const reviewClaim = useCallback(
+    async (claimId: string, approve: boolean, note?: string): Promise<ActionResult<Claim>> => {
+      if (!user) {
+        const error = 'Sign in to review a claim.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const claim = rawClaims.find((candidate) => candidate.id === claimId);
+      const item = claim ? rawItems.find((candidate) => candidate.id === claim.itemId) : undefined;
+      const canReview = Boolean(item && (user.role === 'admin' || item.finderId === user.id || item.ownerId === user.id));
+      if (!claim || !item || !canReview) {
+        const error = 'You do not have access to review this claim.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (claim.status !== 'pending') {
+        const error = 'This claim has already been reviewed.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
+
+      if (supabase) {
+        try {
+          await reviewRemoteClaim(supabase, claimId, approve, note);
+          const snapshot = await loadRemoteState(user);
+          const reviewed = snapshot?.claims.find((candidate) => candidate.id === claimId);
+          if (!reviewed) throw new Error('The reviewed claim could not be refreshed.');
+          await (approve ? haptics.confirm() : haptics.warn());
+          showToast(approve ? 'Claim approved.' : 'Claim declined.', approve ? 'success' : 'info');
+          return { ok: true, data: reviewed };
+        } catch (cause) {
+          const error = actionError(cause, 'The claim could not be reviewed.');
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+      }
+
+      const reviewed: Claim = {
+        ...claim,
+        status: approve ? 'accepted' : 'declined',
+        reviewNote: note?.trim() || undefined,
+      };
+      setRawClaims((current) => current.map((candidate) => {
+        if (candidate.id === claimId) return reviewed;
+        if (approve && candidate.itemId === claim.itemId && candidate.status === 'pending') {
+          return { ...candidate, status: 'declined', reviewNote: 'Another claim was accepted.' };
+        }
+        return candidate;
+      }));
+      const fallbackStatus: ItemStatus = item.handoffDueAt && new Date(item.handoffDueAt) <= new Date()
+        ? 'handoff_due'
+        : 'published';
+      setRawItems((current) => current.map((candidate) => (
+        candidate.id === item.id
+          ? { ...candidate, status: approve ? 'pickup_agreed' : fallbackStatus }
+          : candidate
+      )));
+      setActivity((current) => [{
+        id: uniqueId('activity'),
+        kind: 'claim',
+        title: approve ? 'Claim approved' : 'Claim not verified',
+        message: approve
+          ? `Ownership details for ${item.title} were approved. Contact can now be revealed.`
+          : `The claim for ${item.title} was not verified.`,
+        itemId: item.id,
+        createdAt: new Date().toISOString(),
+        read: false,
+        audienceIds: [claim.claimantId, item.finderId, item.ownerId, 'admin-demo'].filter(Boolean) as string[],
+      }, ...current]);
+      await (approve ? haptics.confirm() : haptics.warn());
+      showToast(approve ? 'Claim approved.' : 'Claim declined.', approve ? 'success' : 'info');
+      return { ok: true, data: reviewed };
+    },
+    [loadRemoteState, rawClaims, rawItems, showToast, user],
+  );
+
+  const revealContact = useCallback(
+    async (itemId: string): Promise<ActionResult<string>> => {
+      if (!user) {
+        const error = 'Sign in to view contact details.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const item = rawItems.find((candidate) => candidate.id === itemId);
+      if (!item) {
+        const error = 'Item not found.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (supabase) {
+        try {
+          const phone = await revealRemoteContact(supabase, itemId);
+          setRevealedContactIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
+          await loadRemoteState(user);
+          await haptics.press();
+          return { ok: true, data: phone };
+        } catch (cause) {
+          const error = actionError(cause, 'Contact details could not be opened.');
+          showToast(error, 'warning');
+          await haptics.warn();
+          return { ok: false, error };
+        }
+      }
+      const ownsReport = item.ownerId === user.id || item.finderId === user.id;
+      const hasClaim = rawClaims.some(
+        (claim) => claim.itemId === itemId && claim.claimantId === user.id && claim.status === 'accepted',
+      );
+      if (!ownsReport && !hasClaim && user.role !== 'admin') {
+        const error = 'Start a verified claim before viewing contact details.';
+        showToast(error, 'warning');
+        await haptics.warn();
+        return { ok: false, error };
+      }
+
+      setRevealedContactIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
+      setActivity((current) => [
+        {
+          id: uniqueId('activity'),
+          kind: 'contact',
+          title: 'Contact revealed',
+          message: `Contact access for ${item.title} was recorded.`,
+          itemId,
+          createdAt: new Date().toISOString(),
+          read: true,
+          audienceIds: [user.id, 'admin-demo'],
+        },
+        ...current,
+      ]);
+      await haptics.press();
+      return { ok: true, data: item.holderPhone };
+    },
+    [loadRemoteState, rawClaims, rawItems, showToast, user],
+  );
+
+  const flagItem = useCallback(
+    async (itemId: string, reason = 'Safety review requested'): Promise<ActionResult> => {
+      if (!user) {
+        const error = 'Sign in to report a listing.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const item = rawItems.find((candidate) => candidate.id === itemId);
+      if (!item) return { ok: false, error: 'Item not found.' };
+      if (flaggedItemIds.includes(itemId)) return { ok: true, data: undefined };
+      if (supabase) {
+        try {
+          await flagRemoteItem(supabase, itemId, reason);
+          await loadRemoteState(user);
+          showToast('Listing sent to campus staff.', 'success');
+          await haptics.confirm();
+          return { ok: true, data: undefined };
+        } catch (cause) {
+          const error = actionError(cause, 'The listing could not be sent for review.');
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+      }
+      const details = reason.trim().length >= 10 ? reason.trim() : 'Safety review requested.';
+      const now = new Date().toISOString();
+      const flag: RemoteItemFlag = {
+        id: uniqueId('flag'),
+        itemId,
+        reason: 'other',
+        details,
+        status: 'open',
+        submittedBy: user.id,
+        createdAt: now,
+      };
+      setRawFlags((current) => [flag, ...current]);
+      setFlaggedItemIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
+      setActivity((current) => [{
+        id: uniqueId('activity'),
+        kind: 'status',
+        title: 'Listing sent for review',
+        message: `${item.title}: ${details}`,
+        itemId,
+        createdAt: now,
+        read: false,
+        audienceIds: [user.id, 'admin-demo'],
+      }, ...current]);
+      showToast('Listing sent to campus staff.', 'success');
+      await haptics.confirm();
+      return { ok: true, data: undefined };
+    },
+    [flaggedItemIds, loadRemoteState, rawItems, showToast, user],
+  );
+
+  const reviewFlag = useCallback(
+    async (
+      flagId: string,
+      status: RemoteFlagReviewStatus,
+      note: string,
+    ): Promise<ActionResult<RemoteItemFlag>> => {
+      if (!user || user.role !== 'admin') {
+        const error = 'Admin access is required to review listing reports.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const flag = rawFlags.find((candidate) => candidate.id === flagId);
+      if (!flag) {
+        const error = 'Listing report not found.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (flag.status !== 'open') {
+        const error = 'This listing report has already been reviewed.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
+      if (status !== 'dismissed' && status !== 'actioned') {
+        const error = 'Choose a valid moderation outcome.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const resolutionNote = note.trim();
+      if (resolutionNote.length < 3 || resolutionNote.length > 500) {
+        const error = 'Add a resolution note between 3 and 500 characters.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+
+      if (supabase) {
+        try {
+          await reviewRemoteFlag(supabase, flagId, status, resolutionNote);
+          const snapshot = await loadRemoteState(user);
+          const reviewed = snapshot?.flags.find((candidate) => candidate.id === flagId);
+          if (!reviewed) throw new Error('The reviewed listing report could not be refreshed.');
+          await (status === 'actioned' ? haptics.confirm() : haptics.press());
+          showToast(status === 'actioned' ? 'Listing report actioned.' : 'Listing report dismissed.', 'success');
+          return { ok: true, data: reviewed };
+        } catch (cause) {
+          const error = actionError(cause, 'The listing report could not be reviewed.');
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+      }
+
+      const now = new Date().toISOString();
+      const reviewed: RemoteItemFlag = {
+        ...flag,
+        status,
+        reviewedAt: now,
+        resolutionNote,
+      };
+      setRawFlags((current) => current.map((candidate) => (
+        candidate.id === flagId ? reviewed : candidate
+      )));
+      if (flag.submittedBy === user.id) {
+        setFlaggedItemIds((current) => current.filter((itemId) => itemId !== flag.itemId));
+      }
+      setActivity((current) => [{
+        id: uniqueId('activity'),
+        kind: 'status',
+        title: status === 'actioned' ? 'Listing report actioned' : 'Listing report dismissed',
+        message: resolutionNote,
+        itemId: flag.itemId,
+        createdAt: now,
+        read: true,
+        audienceIds: [user.id, flag.submittedBy].filter(Boolean) as string[],
+      }, ...current]);
+      await (status === 'actioned' ? haptics.confirm() : haptics.press());
+      showToast(status === 'actioned' ? 'Listing report actioned.' : 'Listing report dismissed.', 'success');
+      return { ok: true, data: reviewed };
+    },
+    [loadRemoteState, rawFlags, showToast, user],
+  );
+
+  const getHandoffCode = useCallback(async (itemId: string): Promise<ActionResult<string>> => {
+    const item = rawItems.find((candidate) => candidate.id === itemId);
+    const canView = Boolean(user && item && item.finderId === user.id);
+    if (!item || item.kind !== 'found' || !canView) {
+      return { ok: false, error: 'Handoff codes are available only to the finder.' };
+    }
+    if (supabase) {
+      try {
+        return { ok: true, data: await issueRemoteHandoffCode(supabase, itemId) };
+      } catch (cause) {
+        const error = actionError(cause, 'A handoff code could not be created.');
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+    }
+    return { ok: true, data: handoffCodeFor(itemId) };
+  }, [rawItems, showToast, user]);
+
+  const updateItemStatus = useCallback(
+    async (itemId: string, status: ItemStatus): Promise<ActionResult<PublicItem>> => {
+      const item = rawItems.find((candidate) => candidate.id === itemId);
+      if (!item) return { ok: false, error: 'Item not found.' };
+      const acceptedClaim = rawClaims.find(
+        (claim) => claim.itemId === itemId && claim.status === 'accepted',
+      );
+      if (!user || status !== 'returned') {
+        const error = 'Use the claim and custody workflows to change this status.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
+      if (!acceptedClaim) {
+        const error = 'Approve an ownership claim before completing the return.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
+      const isReporter = item.finderId === user.id || item.ownerId === user.id;
+      if (user.role !== 'admin' && (!isReporter || item.status === 'at_office')) {
+        const error = item.status === 'at_office'
+          ? 'Campus staff must confirm a return from Lost & Found.'
+          : 'Only the report holder or campus staff can complete this return.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
+      if (supabase) {
+        try {
+          await completeRemoteReturn(supabase, acceptedClaim.id);
+          const snapshot = await loadRemoteState(user);
+          const updated = snapshot?.items.find((candidate) => candidate.id === itemId);
+          if (!updated) throw new Error('The returned item could not be refreshed.');
+          await haptics.confirm();
+          showToast('Return completed.', 'success');
+          return { ok: true, data: toPublicItem(updated) };
+        } catch (cause) {
+          const error = actionError(cause, 'The return could not be completed.');
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+      }
+      const updated = { ...item, status };
+      setRawItems((current) =>
+        current.map((candidate) => (candidate.id === itemId ? updated : candidate)),
+      );
+      setActivity((current) => [
+        {
+          id: uniqueId('activity'),
+          kind: 'status',
+          title: 'Status updated',
+          message: `${item.title} is now ${status.replaceAll('_', ' ')}.`,
+          itemId,
+          createdAt: new Date().toISOString(),
+          read: false,
+          audienceIds: [user.id, item.finderId, item.ownerId].filter(Boolean) as string[],
+        },
+        ...current,
+      ]);
+      await haptics.confirm();
+      showToast('Status updated.', 'success');
+      return { ok: true, data: toPublicItem(updated) };
+    },
+    [loadRemoteState, rawClaims, rawItems, showToast, user],
+  );
+
+  const recordCustodyHandoff = useCallback(
+    async (itemId: string, handoffPoint?: string, code?: string): Promise<ActionResult<PublicItem>> => {
+      if (!user || user.role !== 'admin') {
+        const error = 'Campus staff must confirm physical intake.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const item = rawItems.find((candidate) => candidate.id === itemId);
+      if (!item || item.kind !== 'found') {
+        const error = 'Only found items can be handed to lost and found.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (supabase) {
+        try {
+          await acceptRemoteCustody(
+            supabase,
+            itemId,
+            handoffPoint?.trim() || item.handoffPoint || 'Lost and Found desk',
+            code?.trim() ?? '',
+          );
+          const snapshot = await loadRemoteState(user);
+          const updated = snapshot?.items.find((candidate) => candidate.id === itemId);
+          if (!updated) throw new Error('The custody record could not be refreshed.');
+          await haptics.confirm();
+          showToast('Custody handoff recorded.', 'success');
+          return { ok: true, data: toPublicItem(updated) };
+        } catch (cause) {
+          const error = actionError(cause, 'Custody could not be recorded.');
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+      }
+      if (code?.trim() !== handoffCodeFor(itemId)) {
+        const error = 'That handoff code does not match this item.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      const updated: LostFoundItem = {
+        ...item,
+        status: 'at_office',
+        handoffPoint: handoffPoint?.trim() || item.handoffPoint || 'Lost and found desk',
+        holderName: 'Campus Lost & Found',
+        holderPhone: demoAdmin.phone,
+      };
+      setRawItems((current) =>
+        current.map((candidate) => (candidate.id === itemId ? updated : candidate)),
+      );
+      setActivity((current) => [
+        {
+          id: uniqueId('activity'),
+          kind: 'handoff',
+          title: 'Handoff recorded',
+          message: `${item.title} is now at ${updated.handoffPoint}.`,
+          itemId,
+          createdAt: new Date().toISOString(),
+          read: false,
+          audienceIds: [user.id, item.finderId, item.ownerId, 'admin-demo'].filter(Boolean) as string[],
+        },
+        ...current,
+      ]);
+      await haptics.confirm();
+      showToast('Custody handoff recorded.', 'success');
+      return { ok: true, data: toPublicItem(updated) };
+    },
+    [loadRemoteState, rawItems, showToast, user],
+  );
+
+  const markNotificationRead = useCallback((activityId: string) => {
+    setActivity((current) =>
+      current.map((entry) => (entry.id === activityId ? { ...entry, read: true } : entry)),
+    );
+    if (supabase) {
+      void markRemoteNotificationRead(supabase, activityId).catch(() => {
+        // The local read state remains useful; the next refresh can retry from server state.
+      });
+    }
+  }, []);
+
+  const createUniversityCode = useCallback(async (): Promise<ActionResult<string>> => {
+    if (!user || user.role !== 'admin') {
+      const error = 'Admin access is required to issue university codes.';
+      showToast(error, 'error');
+      return { ok: false, error };
+    }
+    if (supabase) {
+      try {
+        const code = await createRemoteUniversityCode(supabase);
+        await haptics.confirm();
+        showToast('University code created.', 'success');
+        return { ok: true, data: code };
+      } catch (cause) {
+        const error = actionError(cause, 'A university code could not be created.');
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+    }
+    const code = `STRATH-${Math.floor(1000 + Math.random() * 9000)}`;
+    await haptics.confirm();
+    showToast('Preview code rotated.', 'success');
+    return { ok: true, data: code };
+  }, [showToast, user]);
+
+  const items = useMemo(() => rawItems.map(toPublicItem), [rawItems]);
+  const currentUserItems = useMemo(
+    () =>
+      user
+        ? items.filter((item) => item.ownerId === user.id || item.finderId === user.id)
+        : [],
+    [items, user],
+  );
+  const currentUserActivity = useMemo(
+    () =>
+      user
+        ? user.role === 'admin'
+          ? activity
+          : activity.filter((entry) => entry.audienceIds.includes(user.id))
+        : [],
+    [activity, user],
+  );
+  const claims = useMemo(() => {
+    if (!user) return [];
+    if (user.role === 'admin') return rawClaims;
+    const managedItemIds = new Set(
+      rawItems
+        .filter((item) => item.ownerId === user.id || item.finderId === user.id)
+        .map((item) => item.id),
+    );
+    return rawClaims.filter(
+      (claim) => claim.claimantId === user.id || managedItemIds.has(claim.itemId),
+    );
+  }, [rawClaims, rawItems, user]);
+  const flags = useMemo(() => {
+    if (!user) return [];
+    if (user.role === 'admin') return rawFlags;
+    const managedItemIds = new Set(
+      rawItems
+        .filter((item) => item.ownerId === user.id || item.finderId === user.id)
+        .map((item) => item.id),
+    );
+    return rawFlags
+      .filter((flag) => flag.submittedBy === user.id || managedItemIds.has(flag.itemId))
+      .map((flag) => (
+        flag.submittedBy === user.id ? flag : { ...flag, submittedBy: undefined }
+      ));
+  }, [rawFlags, rawItems, user]);
+  const notifications = useMemo(
+    () => currentUserActivity.filter((entry) => !entry.read),
+    [currentUserActivity],
+  );
+  const getItem = useCallback(
+    (itemId: string) => items.find((item) => item.id === itemId),
+    [items],
+  );
+
+  const value = useMemo<AppStateValue>(
+    () => ({
+      mode: isSupabaseConfigured ? 'supabase' : 'demo',
+      user,
+      role: user?.role ?? null,
+      isAuthenticated: Boolean(user),
+      loading,
+      toast,
+      items,
+      claims,
+      activity: currentUserActivity,
+      notifications,
+      currentUserItems,
+      currentUserActivity,
+      revealedContactIds,
+      flags,
+      flaggedItemIds,
+      signIn,
+      signUp,
+      signOut,
+      createReport,
+      claimItem,
+      reviewClaim,
+      revealContact,
+      flagItem,
+      reviewFlag,
+      getHandoffCode,
+      createUniversityCode,
+      updateItemStatus,
+      recordCustodyHandoff,
+      markNotificationRead,
+      dismissToast: () => setToast(null),
+      getItem,
+    }),
+    [
+      claimItem,
+      claims,
+      createUniversityCode,
+      createReport,
+      currentUserActivity,
+      currentUserItems,
+      flagItem,
+      flags,
+      flaggedItemIds,
+      getItem,
+      getHandoffCode,
+      items,
+      loading,
+      markNotificationRead,
+      notifications,
+      recordCustodyHandoff,
+      reviewClaim,
+      reviewFlag,
+      revealContact,
+      revealedContactIds,
+      signIn,
+      signOut,
+      signUp,
+      toast,
+      updateItemStatus,
+      user,
+    ],
+  );
+
+  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
+}
+
+export function useAppState() {
+  const context = useContext(AppStateContext);
+  if (!context) throw new Error('useAppState must be used within AppStateProvider.');
+  return context;
+}

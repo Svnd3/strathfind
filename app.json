@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "StrathFind",
+    "slug": "strathfind",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/brand/icon.png",
+    "scheme": "strathfind",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "app.strathfind.mobile",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#7B0323",
+        "foregroundImage": "./assets/brand/adaptive-foreground.png"
+      },
+      "package": "app.strathfind.mobile",
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/brand/favicon.png",
+      "name": "StrathFind",
+      "shortName": "StrathFind",
+      "themeColor": "#7B0323",
+      "backgroundColor": "#F2ECE8"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#7B0323",
+          "image": "./assets/brand/splash.png",
+          "imageWidth": 176
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow StrathFind to choose a photo for a lost or found item report.",
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
