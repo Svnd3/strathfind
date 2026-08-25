@@ -5,6 +5,8 @@ export * from './content';
 export * from './fields';
 export * from './item-card';
 export * from './layout';
+export * from './public-browse';
+export * from './location-field';
 export * from './route-loading';
 export * from './selection';
 export * from './status';

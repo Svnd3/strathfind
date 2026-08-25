@@ -65,7 +65,7 @@ export default function AuthCallbackScreen() {
 
   useEffect(() => {
     if (result?.ok && !loading && user?.id === result.userId) {
-      router.replace(user.role === 'admin' ? '/admin' : '/(student)/find');
+      router.replace(user.role === 'admin' ? '/admin' : '/account');
     }
   }, [loading, result, user]);
 

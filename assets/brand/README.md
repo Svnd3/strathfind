@@ -2,9 +2,9 @@
 
 The primary mark uses only the approved StrathFind palette:
 
-- Deep wine red: `#7B0323`
+- Deep wine red: `#711C3A`
 - Black: `#000000`
-- Discovery yellow: `#FFFF2E`
+- Discovery gold: `#F2C45E`
 
 ## Files
 

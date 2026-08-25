@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Bell, BellRing, Search, SlidersHorizontal } from 'lucide-react-native';
+import { Bell, BellRing, Search } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
@@ -15,14 +15,13 @@ import {
   SectionHeading,
   SegmentedControl,
   Surface,
-  TextButton,
   TextField,
   getCategoryLabel,
 } from '@/components/strathfind';
 import { palette, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
 import { filterItems } from '@/lib/item-utils';
-import { categories } from '@/lib/mock-data';
+import { categories } from '@/lib/catalog';
 import { readPreference, writePreference } from '@/lib/preferences';
 import type { ItemCategory, ItemKind } from '@/lib/types';
 import { useAppState } from '@/state';
@@ -57,7 +56,7 @@ function savedSearchLabel(search: SavedSearch) {
 
 export default function FindScreen() {
   const { width } = useWindowDimensions();
-  const { items, notifications, user } = useAppState();
+  const { items, notifications } = useAppState();
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<KindFilter>('all');
   const [category, setCategory] = useState<CategoryFilter>('all');
@@ -106,51 +105,43 @@ export default function FindScreen() {
       <ContentShell style={styles.shell}>
         <View style={styles.header}>
           <BrandLockup compact={width < 370} markSize={40} />
-          <View style={styles.headerActions}>
-            <View style={styles.greeting}>
-              <AppText color={palette.muted} variant="micro">GOOD DAY</AppText>
-              <AppText variant="support">{user?.name.split(' ')[0] ?? 'Student'}</AppText>
-            </View>
-            <View>
-              <IconButton
-                accessibilityLabel="Open activity"
-                icon={unread ? BellRing : Bell}
-                onPress={() => router.push('/(student)/activity')}
-              />
-              {unread ? <View accessibilityLabel={`${unread} unread`} style={styles.unreadDot} /> : null}
-            </View>
+          <View>
+            <IconButton
+              accessibilityLabel="Open activity"
+              icon={unread ? BellRing : Bell}
+              onPress={() => router.push('/(student)/activity')}
+            />
+            {unread ? <View accessibilityLabel={`${unread} unread`} style={styles.unreadDot} /> : null}
           </View>
         </View>
 
-        <View style={styles.intro}>
-          <AppText accessibilityRole="header" variant="h1">Find what matters.</AppText>
-          <AppText color={palette.muted} variant="body">Search verified reports from your campus.</AppText>
-        </View>
+        <AppText accessibilityRole="header" variant="h1">Find an item</AppText>
 
-        <Surface padding="md" style={styles.searchPanel}>
-          <TextField
-            accessibilityHint="Search item names, colours, buildings, or categories"
-            label="Search campus"
-            leading={<Search color={palette.muted} size={20} />}
-            onChangeText={setQuery}
-            placeholder="Earbuds, blue bottle, library…"
-            returnKeyType="search"
-            value={query}
-          />
-          <SegmentedControl
-            label="Report type"
-            onChange={updateKind}
-            options={[
-              { label: 'All', value: 'all' },
-              { label: 'Found', value: 'found' },
-              { label: 'Lost', value: 'lost' },
-            ]}
-            value={kind}
-          />
-          <View style={styles.filtersLabel}>
-            <SlidersHorizontal color={palette.wine} size={17} />
-            <AppText variant="support">Category</AppText>
+        <Surface padding="md" tone="strong" style={styles.searchPanel}>
+          <View style={[styles.searchTop, width >= 760 && styles.searchTopWide]}>
+            <TextField
+              accessibilityHint="Search item names, colours, buildings, or categories"
+              containerStyle={styles.searchField}
+              label="Search"
+              leading={<Search color={palette.muted} size={20} />}
+              onChangeText={setQuery}
+              placeholder="Item or location"
+              returnKeyType="search"
+              value={query}
+            />
+            <SegmentedControl
+              label="Type"
+              onChange={updateKind}
+              options={[
+                { label: 'All', value: 'all' },
+                { label: 'Found', value: 'found' },
+                { label: 'Lost', value: 'lost' },
+              ]}
+              style={[styles.typeControl, width >= 760 && styles.typeControlWide]}
+              value={kind}
+            />
           </View>
+          <AppText variant="support">Category</AppText>
           <ScrollView
             horizontal
             contentContainerStyle={styles.chips}
@@ -189,9 +180,8 @@ export default function FindScreen() {
 
         <SectionHeading
           actionLabel={saved ? 'Remove saved' : 'Save search'}
-          description={`${filtered.length} ${filtered.length === 1 ? 'report' : 'reports'} in your campus circle`}
           onAction={toggleSavedSearch}
-          title={kind === 'all' ? 'Latest reports' : kind === 'found' ? 'Items found' : 'Items lost'}
+          title={`${filtered.length} ${filtered.length === 1 ? 'report' : 'reports'}`}
         />
 
         {filtered.length ? (
@@ -209,20 +199,10 @@ export default function FindScreen() {
         ) : (
           <EmptyState
             actionLabel="Clear filters"
-            message="Try another word or widen your filters."
             onAction={() => { setQuery(''); setKind('all'); setCategory('all'); }}
             title="No reports found"
           />
         )}
-
-        <Surface padding="lg" tone="inset" style={styles.tip}>
-          <AppText color={palette.wine} variant="micro">PRIVACY TIP</AppText>
-          <AppText variant="bodyStrong">Recognise something?</AppText>
-          <AppText color={palette.muted} variant="support">
-            Open the report and answer the private clue before contact details can be revealed.
-          </AppText>
-          <TextButton onPress={() => router.push('/(student)/report')}>Report something instead</TextButton>
-        </Surface>
       </ContentShell>
     </Screen>
   );
@@ -231,14 +211,14 @@ export default function FindScreen() {
 const styles = StyleSheet.create({
   shell: { gap: spacing.xl, paddingTop: spacing.md },
   header: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  greeting: { alignItems: 'flex-end' },
   unreadDot: { position: 'absolute', top: 3, right: 3, width: 10, height: 10, borderRadius: 5, backgroundColor: palette.yellow, borderColor: palette.wine, borderWidth: 2 },
-  intro: { gap: spacing.xs },
   searchPanel: { gap: spacing.md },
-  filtersLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  searchTop: { gap: spacing.md },
+  searchTopWide: { flexDirection: 'row', alignItems: 'flex-start' },
+  searchField: { flex: 1, minWidth: 0 },
+  typeControl: { width: '100%' },
+  typeControlWide: { width: 330 },
   chips: { gap: spacing.xs, paddingRight: spacing.md },
   savedBlock: { gap: spacing.xs, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: palette.lineSoft },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, alignItems: 'stretch' },
-  tip: { gap: spacing.xs, marginTop: spacing.md },
 });

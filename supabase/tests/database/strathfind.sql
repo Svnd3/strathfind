@@ -30,7 +30,7 @@ values
     'authenticated',
     'authenticated',
     '{"provider":"email","providers":["email"]}',
-    '{"display_name":"Finder One","phone_e164":"+254700000001","university_code":"SF-DEMO-2026","student_number":"std/001","role":"admin"}',
+    '{"display_name":"Finder One","phone_e164":"+254700000001","university_code":"SF-DEMO-2026","student_number":"std/001","role":"admin","terms_accepted":true,"terms_version":"2026-08-26","privacy_notice_acknowledged":true,"privacy_notice_version":"2026-08-26"}',
     now(),
     now()
   ),
@@ -40,7 +40,7 @@ values
     'authenticated',
     'authenticated',
     '{"provider":"email","providers":["email"]}',
-    '{"display_name":"Claimant Two","phone_e164":"+254700000002","university_code":"SF-DEMO-2026","student_number":"STD/002"}',
+    '{"display_name":"Claimant Two","phone_e164":"+254700000002","university_code":"SF-DEMO-2026","student_number":"STD/002","terms_accepted":true,"terms_version":"2026-08-26","privacy_notice_acknowledged":true,"privacy_notice_version":"2026-08-26"}',
     now(),
     now()
   ),
@@ -50,7 +50,7 @@ values
     'authenticated',
     'authenticated',
     '{"provider":"email","providers":["email"]}',
-    '{"display_name":"Admin Three","phone_e164":"+254700000003","university_code":"SF-DEMO-2026","student_number":"STD/003"}',
+    '{"display_name":"Admin Three","phone_e164":"+254700000003","university_code":"SF-DEMO-2026","student_number":"STD/003","terms_accepted":true,"terms_version":"2026-08-26","privacy_notice_acknowledged":true,"privacy_notice_version":"2026-08-26"}',
     now(),
     now()
   );
@@ -71,11 +71,58 @@ select pg_temp.assert_true(
       or raw_user_meta_data ? 'student_number'
       or raw_user_meta_data ? 'role'
       or raw_user_meta_data ? 'university_id'
+      or raw_user_meta_data ? 'terms_accepted'
+      or raw_user_meta_data ? 'terms_version'
+      or raw_user_meta_data ? 'privacy_notice_acknowledged'
+      or raw_user_meta_data ? 'privacy_notice_version'
+      or raw_user_meta_data ? 'display_name'
+      or raw_user_meta_data ? 'phone_e164'
     )
     from auth.users
     where id = '10000000-0000-4000-8000-000000000001'
   ),
-  'signup removes reusable or authority-like Auth metadata'
+  'signup removes sensitive, reusable, or authority-like Auth metadata'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 2
+      and bool_and(recorded_at <= clock_timestamp())
+    from public.account_legal_acknowledgements
+    where profile_id = '10000000-0000-4000-8000-000000000001'
+      and document_version = '2026-08-26'
+  ),
+  'signup records server-timestamped Terms acceptance and Privacy Notice acknowledgement'
+);
+
+do $$
+begin
+  begin
+    insert into auth.users (
+      id, email, aud, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) values (
+      '10000000-0000-4000-8000-000000000098',
+      'no-terms@strathfind.test',
+      'authenticated',
+      'authenticated',
+      '{"provider":"email","providers":["email"]}',
+      '{"display_name":"No Terms","phone_e164":"+254700000098","university_code":"SF-DEMO-2026","student_number":"STD/098"}',
+      now(),
+      now()
+    );
+    raise exception 'signup without legal acceptance unexpectedly succeeded';
+  exception
+    when sqlstate '22023' then null;
+  end;
+end;
+$$;
+
+select pg_temp.assert_true(
+  not exists (
+    select 1 from public.profiles
+    where id = '10000000-0000-4000-8000-000000000098'
+  ),
+  'signup rejects missing current legal acceptance'
 );
 
 do $$
@@ -89,7 +136,7 @@ begin
       'authenticated',
       'authenticated',
       '{"provider":"email","providers":["email"]}',
-      '{"display_name":"Duplicate Student","phone_e164":"+254700000099","university_code":"SF-DEMO-2026","student_number":"std/001"}',
+      '{"display_name":"Duplicate Student","phone_e164":"+254700000099","university_code":"SF-DEMO-2026","student_number":"std/001","terms_accepted":true,"terms_version":"2026-08-26","privacy_notice_acknowledged":true,"privacy_notice_version":"2026-08-26"}',
       now(),
       now()
     );
@@ -127,7 +174,7 @@ values (
   'authenticated',
   'authenticated',
   '{"provider":"email","providers":["email"]}',
-  '{"display_name":"Outside Student","phone_e164":"+254700000004","university_code":"OTHER-2026","student_number":"STD/001"}',
+  '{"display_name":"Outside Student","phone_e164":"+254700000004","university_code":"OTHER-2026","student_number":"STD/001","terms_accepted":true,"terms_version":"2026-08-26","privacy_notice_acknowledged":true,"privacy_notice_version":"2026-08-26"}',
   now(),
   now()
 );
@@ -583,6 +630,59 @@ select pg_temp.assert_true(
   ),
   'safe feed schema omits full contact, question, and campus identifiers'
 );
+
+select pg_temp.assert_true(
+  has_function_privilege(
+    'anon',
+    'public.get_public_item_cards(text,text,text,integer)',
+    'execute'
+  )
+  and not has_table_privilege('anon', 'public.found_items', 'select'),
+  'anonymous clients use only the bounded feed RPC, not the reports table'
+);
+
+set local role anon;
+
+select pg_temp.assert_true(
+  (select count(*) = 2 from public.get_public_item_cards(null, null, null, 100)),
+  'anonymous feed returns active Strathmore reports'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 1
+    from public.get_public_item_cards('lost', 'wallet', 'library', 100)
+  ),
+  'anonymous feed applies kind, category, and literal search filters'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 0
+    from public.get_public_item_cards(null, null, ''' or 1=1 --', 100)
+  ),
+  'anonymous feed treats SQL-looking search text as plain input'
+);
+
+select pg_temp.assert_true(
+  (
+    select bool_and(
+      not (
+        to_jsonb(card) ?| array[
+          'reporter_id',
+          'university_id',
+          'phone_e164',
+          'ownership_question',
+          'cover_photo_path'
+        ]
+      )
+    )
+    from public.get_public_item_cards(null, null, null, 100) card
+  ),
+  'anonymous feed rows omit identity, contact, proof, campus, and media-path fields'
+);
+
+reset role;
 
 grant select on strathfind_test_state to authenticated;
 

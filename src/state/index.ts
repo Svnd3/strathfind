@@ -1,6 +1,5 @@
 export {
   AppStateProvider,
-  DEMO_UNIVERSITY_CODE,
   useAppState,
   type ActionResult,
   type ActivityEntry,

@@ -16,7 +16,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#7B0323",
+        "backgroundColor": "#711C3A",
         "foregroundImage": "./assets/brand/adaptive-foreground.png"
       },
       "package": "app.strathfind.mobile",
@@ -27,15 +27,15 @@
       "favicon": "./assets/brand/favicon.png",
       "name": "StrathFind",
       "shortName": "StrathFind",
-      "themeColor": "#7B0323",
-      "backgroundColor": "#F2ECE8"
+      "themeColor": "#711C3A",
+      "backgroundColor": "#F6F1EA"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#7B0323",
+          "backgroundColor": "#711C3A",
           "image": "./assets/brand/splash.png",
           "imageWidth": 176
         }

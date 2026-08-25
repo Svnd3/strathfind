@@ -65,6 +65,13 @@ export interface RemoteSnapshot {
   flaggedItemIds: string[];
 }
 
+export interface PublicFeedFilters {
+  kind?: LostFoundItem['kind'];
+  category?: ItemCategory;
+  search?: string;
+  limit?: number;
+}
+
 type UnknownRow = Record<string, unknown>;
 
 function firstRow(value: unknown): UnknownRow | null {
@@ -227,6 +234,49 @@ function remoteItem(
     handoffPoint: optionalText(row.handoff_point),
     createdAt: textValue(row.created_at, new Date().toISOString()),
   };
+}
+
+function publicRemoteItem(row: UnknownRow): RemoteItem {
+  return {
+    id: textValue(row.id),
+    kind: row.kind === 'lost' ? 'lost' : 'found',
+    title: textValue(row.title, 'Campus item'),
+    category: itemCategory(row.category),
+    color: textValue(row.color),
+    description: textValue(row.description),
+    location: textValue(row.location),
+    foundAt: textValue(row.observed_at, new Date().toISOString()),
+    handoffDueAt: optionalText(row.handoff_due_at),
+    status: appItemStatus(row.status),
+    holderName: 'Contact protected',
+    holderPhone: '',
+    maskedPhone: 'Sign in to continue',
+    handoffPoint: optionalText(row.handoff_point),
+    createdAt: textValue(row.created_at, new Date().toISOString()),
+  };
+}
+
+/**
+ * Loads the deliberately minimal, anonymous Strathmore feed. The backing RPC
+ * owns the campus/status boundary and omits identity, contact, verification,
+ * claim, photo-path, and audit fields.
+ */
+export async function fetchPublicItemFeed(
+  client: SupabaseClient,
+  filters: PublicFeedFilters = {},
+): Promise<RemoteItem[]> {
+  const limit = Math.min(Math.max(Math.trunc(filters.limit ?? 48), 1), 100);
+  const result = await client.rpc('get_public_item_cards', {
+    p_kind: filters.kind ?? null,
+    p_category: filters.category ?? null,
+    p_search: filters.search?.trim() || null,
+    p_limit: limit,
+  });
+  ensureNoError(result.error, 'Public campus reports could not be loaded.');
+
+  return ((result.data ?? []) as UnknownRow[])
+    .filter((row) => Boolean(textValue(row.id)))
+    .map(publicRemoteItem);
 }
 
 function remoteClaim(row: UnknownRow, currentUserId: string): Claim {

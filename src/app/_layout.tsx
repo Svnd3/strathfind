@@ -20,9 +20,11 @@ export default function RootLayout() {
             animation: 'fade',
           }}
         >
-          <Stack.Screen name="index" />
+          <Stack.Screen name="(main)" />
           <Stack.Screen name="auth" />
           <Stack.Screen name="auth-callback" />
+          <Stack.Screen name="report-found" />
+          <Stack.Screen name="legal" />
           <Stack.Screen name="(student)" />
           <Stack.Screen name="item/[id]" />
           <Stack.Screen name="admin" />

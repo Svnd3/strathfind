@@ -49,7 +49,7 @@ export default function ProfileScreen() {
       <ContentShell maxWidth={820} style={styles.shell}>
         <View style={styles.topbar}>
           <BrandLockup markSize={40} />
-          <StatusPill label={mode === 'demo' ? 'Preview mode' : 'Connected'} tone={mode === 'demo' ? 'warning' : 'success'} />
+          <StatusPill label={mode === 'setup' ? 'Setup needed' : 'Connected'} tone={mode === 'setup' ? 'warning' : 'success'} />
         </View>
 
         <Surface padding="lg" style={styles.profileCard}>
@@ -66,22 +66,22 @@ export default function ProfileScreen() {
           </View>
         </Surface>
 
-        <SectionHeading description="Useful updates only. You stay in control." level={3} title="Notifications" />
+        <SectionHeading level={3} title="Notifications" />
         <Surface padding={0} tone="strong">
           <InfoRow
-            copy="Possible matches appear in Activity"
+            copy="Activity alerts"
             icon={Bell}
             label="Match suggestions"
           />
           <Divider />
           <InfoRow
-            copy="Final-hour and handoff-due reminders"
+            copy="Due-time alerts"
             icon={Clock3}
             label="Handoff reminders"
           />
           <Divider />
           <SettingRow
-            copy="Subtle confirmation on important actions"
+            copy="On key actions"
             icon={Smartphone}
             label="Haptic feedback"
             onValueChange={updateHaptics}
@@ -89,13 +89,12 @@ export default function ProfileScreen() {
           />
         </Surface>
 
-        <SectionHeading description="Where unclaimed items are held." level={3} title="Campus lost & found" />
+        <SectionHeading level={3} title="Campus lost & found" />
         <Surface padding="lg" tone="inset" style={styles.officeCard}>
           <View style={styles.officeIcon}><Building2 color={palette.wine} size={24} /></View>
           <View style={{ flex: 1, gap: spacing.xxs }}>
             <AppText variant="bodyStrong">Student Centre desk</AppText>
-            <AppText color={palette.muted} variant="support">Monday–Friday · 8:00–17:00</AppText>
-            <AppText color={palette.muted} variant="support">Main gate security receives items after hours.</AppText>
+            <AppText color={palette.muted} variant="support">Mon–Fri · 8:00–17:00</AppText>
           </View>
         </Surface>
 
@@ -104,14 +103,13 @@ export default function ProfileScreen() {
           <View style={styles.officeIcon}><LockKeyhole color={palette.wine} size={24} /></View>
           <View style={{ flex: 1, gap: spacing.xxs }}>
             <AppText variant="bodyStrong">Contact stays protected</AppText>
-            <AppText color={palette.muted} variant="support">Your number is revealed only after you approve an ownership claim. Every reveal is logged.</AppText>
+            <AppText color={palette.muted} variant="support">Visible only after you approve a claim.</AppText>
           </View>
         </Surface>
 
         <PrimaryButton icon={LogOut} onPress={() => void leave()} style={styles.signOut}>
           Sign out
         </PrimaryButton>
-        <AppText align="center" color={palette.muted} variant="micro">STRATHFIND 1.0 · SAFER RETURNS</AppText>
       </ContentShell>
     </Screen>
   );

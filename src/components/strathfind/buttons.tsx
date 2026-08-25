@@ -86,6 +86,7 @@ function Button({
           alignItems: 'center',
           justifyContent: 'center',
           alignSelf: fullWidth ? 'stretch' : 'flex-start',
+          flexShrink: 0,
           maxWidth: '100%',
           opacity: inactive ? 0.48 : 1,
           transform: [{ scale: pressed ? 0.985 : 1 }],

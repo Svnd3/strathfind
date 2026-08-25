@@ -10,7 +10,7 @@ import { AppText } from './typography';
 
 export interface EmptyStateProps {
   title: string;
-  message: string;
+  message?: string;
   icon?: ComponentType<LucideProps>;
   actionLabel?: string;
   onAction?: () => void;
@@ -57,12 +57,14 @@ export function EmptyState({
         <AppText variant="h3" align="center">
           {title}
         </AppText>
-        <AppText variant="body" color={palette.muted} align="center">
-          {message}
-        </AppText>
+        {message ? (
+          <AppText variant="body" color={palette.muted} align="center">
+            {message}
+          </AppText>
+        ) : null}
       </View>
       {actionLabel && onAction ? (
-        <PrimaryButton onPress={onAction}>{actionLabel}</PrimaryButton>
+        <PrimaryButton onPress={onAction} style={{ alignSelf: 'center' }}>{actionLabel}</PrimaryButton>
       ) : null}
     </View>
   );

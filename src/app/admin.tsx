@@ -73,7 +73,7 @@ export default function AdminScreen() {
   } = useAppState();
   const [view, setView] = useState<AdminView>('overview');
   const [generatedCode, setGeneratedCode] = useState(
-    mode === 'demo' ? 'SF-DEMO-2026' : 'Create a code',
+    mode === 'setup' ? 'Connect Supabase first' : 'Create a code',
   );
 
   const issueUniversityCode = async () => {
@@ -98,7 +98,7 @@ export default function AdminScreen() {
     });
 
   if (loading) return <RouteLoadingScreen />;
-  if (role === 'student') return <Redirect href="/(student)/find" />;
+  if (role === 'student') return <Redirect href="/lost" />;
   if (!role) return <Redirect href="/auth" />;
 
   const leave = async () => {
@@ -145,7 +145,7 @@ export default function AdminScreen() {
               <View style={styles.liveStatus}>
                 <View style={styles.liveDot} />
                 <AppText color={palette.success} variant="support">
-                  {mode === 'demo' ? 'Preview data' : 'Operations live'}
+                  {mode === 'setup' ? 'Setup needed' : 'Operations live'}
                 </AppText>
               </View>
               {!wide ? <IconButton accessibilityLabel="Sign out" icon={LogOut} onPress={() => void leave()} /> : null}
@@ -209,7 +209,7 @@ function Overview({
 }) {
   return (
     <View style={styles.view}>
-      <SectionHeading eyebrow="CAMPUS OPERATIONS" title="Good morning." description="Here is what needs attention today." level={1} />
+      <SectionHeading title="Overview" level={1} />
       <View style={styles.metrics}>
         <Metric icon={Archive} label="Open reports" value={metrics.open} />
         <Metric icon={Clock3} label="Handoff due" value={metrics.due} urgent={metrics.due > 0} />
@@ -217,8 +217,8 @@ function Overview({
         <Metric icon={Boxes} label="At office" value={metrics.office} />
         <Metric icon={Flag} label="Open flags" value={metrics.flags} urgent={metrics.flags > 0} />
       </View>
-      <Surface padding="lg" style={styles.queue}>
-        <SectionHeading eyebrow="PRIORITY" title="Handoff queue" description="Items nearest the 24-hour deadline appear first." level={3} />
+      <Surface padding="lg" tone="strong" style={styles.queue}>
+        <SectionHeading title="Handoff queue" level={3} />
         {intake.length ? intake.slice(0, 3).map((item) => (
           <View key={item.id} style={styles.queueRow}>
             <View style={styles.queueIcon}><Clock3 color={item.status === 'handoff_due' ? palette.danger : palette.wine} size={22} /></View>
@@ -232,7 +232,7 @@ function Overview({
               <TextButton onPress={() => onOpen(item.id)}>View</TextButton>
             )}
           </View>
-        )) : <EmptyState message="No items need office intake." title="Queue clear" />}
+        )) : <EmptyState title="Queue clear" />}
       </Surface>
     </View>
   );
@@ -261,7 +261,7 @@ function Intake({
 
   return (
     <View style={styles.view}>
-      <SectionHeading eyebrow="CHAIN OF CUSTODY" title="Intake & inventory" description="Confirm every physical handoff before changing custody." level={1} />
+      <SectionHeading title="Intake & inventory" level={1} />
       {items.length ? items.map((item) => (
         <Surface key={item.id} padding="md" tone="strong" style={styles.intakeRow}>
           <View style={styles.intakeCard}><ItemCard compact item={item} onPress={() => onOpen(item.id)} /></View>
@@ -297,7 +297,7 @@ function Intake({
             <SecondaryButton onPress={() => onOpen(item.id)}>Details</SecondaryButton>
           </View>
         </Surface>
-      )) : <EmptyState message="Incoming items will appear here." title="No inventory" />}
+      )) : <EmptyState title="No inventory" />}
     </View>
   );
 }
@@ -313,7 +313,7 @@ function Claims({
 }) {
   return (
     <View style={styles.view}>
-      <SectionHeading eyebrow="VERIFICATION" title="Claims" description="Review proof without exposing private details." level={1} />
+      <SectionHeading title="Claims" level={1} />
       {claims.length ? claims.map((claim) => {
         const item = items.find((candidate) => candidate.id === claim.itemId);
         return (
@@ -336,7 +336,7 @@ function Claims({
             </View>
           </Surface>
         );
-      }) : <EmptyState message="New ownership claims will wait here for review." title="No pending claims" />}
+      }) : <EmptyState title="No pending claims" />}
     </View>
   );
 }
@@ -344,19 +344,19 @@ function Claims({
 function Codes({ generatedCode, onGenerate }: { generatedCode: string; onGenerate: () => Promise<void> }) {
   return (
     <View style={styles.view}>
-      <SectionHeading eyebrow="ACCESS CONTROL" title="Access codes" description="Issue short-lived student access. Admin roles stay server-controlled." level={1} />
+      <SectionHeading title="Access codes" level={1} />
       <Surface padding="xl" style={styles.codeCard}>
         <View style={styles.codeIcon}><KeyRound color={palette.yellow} size={30} /></View>
         <AppText color={palette.muted} variant="micro">LATEST UNIVERSITY CODE</AppText>
         <AppText selectable style={styles.codeText} variant="h1">{generatedCode}</AppText>
-        <AppText align="center" color={palette.muted} variant="support">Copy it now. Production codes are campus-scoped, expire after seven days, and are stored only as hashes.</AppText>
+        <AppText align="center" color={palette.muted} variant="support">Expires in seven days.</AppText>
         <PrimaryButton onPress={() => void onGenerate()}>Create new code</PrimaryButton>
       </Surface>
       <Surface padding="lg" tone="inset" style={styles.policyRow}>
         <ShieldCheck color={palette.wine} size={24} />
         <View style={{ flex: 1 }}>
           <AppText variant="bodyStrong">No public admin signup</AppText>
-          <AppText color={palette.muted} variant="support">Staff access must be provisioned by an existing trusted administrator.</AppText>
+          <AppText color={palette.muted} variant="support">Provisioned by a trusted admin.</AppText>
         </View>
       </Surface>
     </View>
@@ -400,12 +400,7 @@ function Moderation({
 
   return (
     <View style={styles.view}>
-      <SectionHeading
-        description="Review student safety reports and record every decision."
-        eyebrow="CAMPUS SAFETY"
-        level={1}
-        title="Moderation"
-      />
+      <SectionHeading level={1} title="Moderation" />
       {sorted.length ? sorted.map((flag) => {
         const item = items.find((candidate) => candidate.id === flag.itemId);
         const note = notes[flag.id] ?? '';
@@ -465,7 +460,7 @@ function Moderation({
             )}
           </Surface>
         );
-      }) : <EmptyState message="Student reports that need review will appear here." title="No moderation reports" />}
+      }) : <EmptyState title="No moderation reports" />}
     </View>
   );
 }
@@ -473,7 +468,7 @@ function Moderation({
 function Audit({ entries }: { entries: ReturnType<typeof useAppState>['activity'] }) {
   return (
     <View style={styles.view}>
-      <SectionHeading eyebrow="ACCOUNTABILITY" title="Audit trail" description="Contact reveals, claims and custody changes are traceable." level={1} />
+      <SectionHeading title="Audit trail" level={1} />
       <Surface padding={0} tone="strong">
         {entries.map((entry, index) => (
           <View key={entry.id} style={[styles.auditRow, index > 0 && styles.auditBorder]}>

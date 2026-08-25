@@ -1,5 +1,5 @@
 -- LOCAL DEVELOPMENT ONLY.
--- Never use this join code or demo university in a production project.
+-- Never use this join code or local contact record in a production project.
 
 insert into public.universities (
   id,
@@ -12,8 +12,8 @@ insert into public.universities (
 )
 values (
   '00000000-0000-4000-8000-000000000101',
-  'StrathFind Demo University',
-  'strathfind-demo',
+  'Strathmore University',
+  'strathmore-university',
   'Student Centre Lost & Found',
   'Student Centre, Ground Floor',
   '+254700000000',
@@ -27,8 +27,8 @@ set name = excluded.name,
     active = excluded.active;
 
 -- Demo student signup code: SF-DEMO-2026
--- Auth signup metadata must include all four keys:
--- display_name, phone_e164, university_code, and student_number.
+-- Auth signup metadata must include the profile keys above plus the current
+-- Terms and Privacy Notice acknowledgement fields documented in README.md.
 insert into public.university_join_codes (
   id,
   university_id,
@@ -47,7 +47,7 @@ select
   '2030-01-01 00:00:00+00'::timestamptz,
   null
 from public.universities u
-where u.slug = 'strathfind-demo'
+where u.slug = 'strathmore-university'
 on conflict (code_hash) do update
 set university_id = excluded.university_id,
     label = excluded.label,

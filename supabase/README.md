@@ -11,7 +11,7 @@ supabase start
 supabase db reset
 ```
 
-`db reset` applies all migrations in order and then `seed.sql`. The seed is deliberately demo-only. It creates the join code `SF-DEMO-2026`; never apply that seed to production.
+`db reset` applies all migrations in order and then `seed.sql`. The seed is local-only: it creates a Strathmore-scoped development record and disposable join code, but no users or item reports. Never apply it to production.
 
 For a linked project, review all migrations and use the normal `supabase db push` release process. Never place a service-role key in a browser or mobile bundle.
 
@@ -29,6 +29,10 @@ await supabase.auth.signUp({
       phone_e164: "+254712345678",
       university_code: "SF-DEMO-2026",
       student_number: "123456",
+      terms_accepted: true,
+      terms_version: "2026-08-26",
+      privacy_notice_acknowledged: true,
+      privacy_notice_version: "2026-08-26",
     },
   },
 });
@@ -38,8 +42,12 @@ await supabase.auth.signUp({
 - `phone_e164`: `+` followed by 8–15 digits, with a nonzero country-code prefix.
 - `university_code`: case-insensitive active join code.
 - `student_number`: normalized to uppercase; 3–32 characters matching `^[A-Z0-9][A-Z0-9._/-]{2,31}$`.
+- `terms_accepted` and `privacy_notice_acknowledged`: both must be `true`.
+- `terms_version` and `privacy_notice_version`: must match the versions exported by `src/lib/legal.ts` and enforced by the latest migration.
 
-The student number is unique within a university, but may exist at another university. The Auth trigger atomically redeems the join code, always assigns the `student` role, and removes `university_code`, `student_number`, `role`, and `university_id` from Auth metadata. A client cannot self-assign admin access.
+The student number is unique within a university, but may exist at another university. The Auth trigger atomically redeems the join code, always assigns the `student` role, and removes the one-time signup fields (including profile PII, join code, legal flags, and authority-like values) from Auth metadata after copying the required values into protected tables. A client cannot self-assign admin access.
+
+Signup also writes server-timestamped, append-only rows to `account_legal_acknowledgements`. Auth metadata is only the transport for the explicit signup action and is removed after the profile is created. When the legal text changes, update both constants in `src/lib/legal.ts` and the version checks in a new migration; do not edit an already-applied migration.
 
 Read the signed-in user's private identifier through `get_my_profile()`:
 
@@ -50,9 +58,11 @@ avatar_path, created_at, updated_at
 
 Ordinary profile queries deliberately do not have column permission for `student_number`. Same-campus admins may call `list_university_members()`.
 
-For a new production project, create the first university and a random, one-use
-bootstrap code from a trusted SQL session. Replace every example value before
-running this; do not reuse the local demo code:
+For a new production project, create Strathmore University and a random, one-use
+bootstrap code from a trusted SQL session. Keep the exact
+`strathmore-university` slug because the anonymous feed is deliberately anchored
+to it. Replace the contact and secret values before running this; do not reuse
+the local demo code:
 
 ```sql
 begin;
@@ -61,8 +71,8 @@ with campus as (
   insert into public.universities (
     name, slug, lost_found_name, lost_found_location, lost_found_phone_e164
   ) values (
-    'Example University',
-    'example-university',
+    'Strathmore University',
+    'strathmore-university',
     'Student Centre Lost & Found',
     'Student Centre, Ground Floor',
     '+254700000000'
@@ -129,6 +139,25 @@ location, observed_at, handoff_point, contact_name, masked_phone
 ```
 
 The first eleven columns preserve the original view order. The feed is same-campus only and does not contain a full phone number, student number, ownership question, claim evidence, or user identifier. Personal `contact_name` values are masked server-side to first name plus last initial (for example, `Amina K.`); an official Lost & Found desk name remains intact after custody. The `location` and `observed_at` aliases let new clients use neutral lost/found wording while legacy clients may continue reading `location_found` and `found_at`.
+
+Signed-out clients must use the deliberately narrow public RPC:
+
+```text
+get_public_item_cards(
+  p_kind text default null,
+  p_category text default null,
+  p_search text default null,
+  p_limit integer default 48
+) -> id, kind, title, category, color, description, location,
+     observed_at, handoff_due_at, status, handoff_point, created_at
+```
+
+This function is fixed to the active university row whose slug is exactly
+`strathmore-university`, caps the result at 100 rows, and excludes returned or
+archived reports. It intentionally omits user identifiers, contacts,
+verification material, claims, audit data, and Storage paths. Anonymous users
+have no direct table access. Create the production university row before
+launch or this feed will correctly return no items.
 
 Upload up to six approved image types to the private `found-item-photos` bucket, then insert metadata into `found_item_photos`. Paths must be:
 
@@ -280,6 +309,8 @@ It covers signup authority, student-number uniqueness, lost/found deadlines, pri
 
 - `202608220002_unified_reports_and_matching.sql` is additive and safe to rerun. Existing `found_items` rows become `kind = 'found'` and retain their deadlines.
 - `202608220003_privacy_boundaries.sql` closes peer-profile, reporter/claimant, audit-actor, and photo-uploader lookup paths and adds the canonical claims-listing RPC. It preserves the `found_item_cards` column contract.
+- `202608260001_public_item_feed.sql` adds the bounded, anonymous-safe Strathmore feed RPC. It does not grant anonymous table or Storage access.
+- `202608260002_legal_acceptance.sql` requires the current Terms acceptance and Privacy Notice acknowledgement at signup and stores append-only, server-timestamped records.
 - `found_items` and the original first eleven `found_item_cards` columns are retained to reduce client breakage.
 - New report creation must use `create_item_report`; the former direct insert grant is revoked.
 - Existing rows may have no verification-question row. Their reporter or an admin can backfill one with `update_item_verification_question` before exposing the claim form.
@@ -296,7 +327,7 @@ It covers signup authority, student-number uniqueness, lost/found deadlines, pri
 
 ## Security summary
 
-- Anonymous users have no app-table access.
+- Anonymous users have no direct app-table or Storage access; their only item access is the column-limited `get_public_item_cards` RPC.
 - Full numbers live only in `profile_contacts`; the feed contains a masked number.
 - Peer profiles, raw report author ids, and unmasked claimant names are not available to student feed clients.
 - Join codes and custody codes are stored only as hashes.

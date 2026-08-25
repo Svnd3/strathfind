@@ -8,21 +8,24 @@ const systemFont = Platform.select({
 });
 
 export const palette = {
-  wine: '#7B0323',
-  wineDark: '#520017',
-  winePressed: '#65021D',
-  wineSoft: '#F0DDE3',
-  yellow: '#FFFF2E',
-  ink: '#21171A',
-  inkSoft: '#55494D',
-  muted: '#6D5E63',
-  canvas: '#F2ECE8',
-  surface: '#F6F1ED',
-  surfaceStrong: '#FFFDFC',
-  inset: '#E8DEDA',
-  line: '#8A747B',
-  lineSoft: '#D3C6C1',
-  white: '#FFFDFC',
+  wine: '#711C3A',
+  wineDark: '#491126',
+  winePressed: '#5B1730',
+  wineSoft: '#F1E2E7',
+  yellow: '#F2C45E',
+  teal: '#215C60',
+  tealDark: '#153F43',
+  tealSoft: '#DDEBE8',
+  ink: '#241B1E',
+  inkSoft: '#574B4F',
+  muted: '#706267',
+  canvas: '#F6F1EA',
+  surface: '#FAF6F0',
+  surfaceStrong: '#FFFCF7',
+  inset: '#EDE5DC',
+  line: '#8B777E',
+  lineSoft: '#DDD0C8',
+  white: '#FFFCF7',
   black: '#000000',
   success: '#245D41',
   successSoft: '#DCECE3',
@@ -30,8 +33,8 @@ export const palette = {
   warningSoft: '#F5E9BC',
   danger: '#9A213A',
   dangerSoft: '#F5DDE3',
-  blue: '#245A70',
-  blueSoft: '#DCECF1',
+  blue: '#315C78',
+  blueSoft: '#DEEAF1',
 } as const;
 
 export const spacing = {
@@ -56,8 +59,8 @@ export const radius = {
 
 export const type = {
   display: { fontFamily: systemFont, fontSize: 52, lineHeight: 52, fontWeight: '700', letterSpacing: -1.6 } satisfies TextStyle,
-  h1: { fontFamily: systemFont, fontSize: 32, lineHeight: 32, fontWeight: '700', letterSpacing: -0.8 } satisfies TextStyle,
-  h2: { fontFamily: systemFont, fontSize: 28, lineHeight: 28, fontWeight: '700', letterSpacing: -0.56 } satisfies TextStyle,
+  h1: { fontFamily: systemFont, fontSize: 28, lineHeight: 32, fontWeight: '700', letterSpacing: -0.7 } satisfies TextStyle,
+  h2: { fontFamily: systemFont, fontSize: 24, lineHeight: 28, fontWeight: '700', letterSpacing: -0.45 } satisfies TextStyle,
   h3: { fontFamily: systemFont, fontSize: 20, lineHeight: 24, fontWeight: '700', letterSpacing: -0.2 } satisfies TextStyle,
   body: { fontFamily: systemFont, fontSize: 16, lineHeight: 24, fontWeight: '400' } satisfies TextStyle,
   bodyStrong: { fontFamily: systemFont, fontSize: 16, lineHeight: 22, fontWeight: '600' } satisfies TextStyle,
@@ -77,20 +80,20 @@ export const layout = {
 
 export function raisedShadow(level: 'sm' | 'md' | 'lg' = 'md'): ViewStyle {
   const values = {
-    sm: { offset: 3, blur: 8, opacity: 0.14, elevation: 2 },
-    md: { offset: 7, blur: 18, opacity: 0.17, elevation: 5 },
-    lg: { offset: 12, blur: 30, opacity: 0.2, elevation: 8 },
+    sm: { offset: 3, blur: 10, opacity: 0.09, elevation: 2 },
+    md: { offset: 8, blur: 24, opacity: 0.12, elevation: 5 },
+    lg: { offset: 14, blur: 38, opacity: 0.16, elevation: 8 },
   }[level];
 
   if (Platform.OS === 'web') {
     return {
-      boxShadow: `${values.offset}px ${values.offset}px ${values.blur}px rgba(91, 58, 68, ${values.opacity}), -${values.offset}px -${values.offset}px ${values.blur}px rgba(255, 255, 255, 0.88)`,
+      boxShadow: `0 ${values.offset}px ${values.blur}px rgba(91, 58, 68, ${values.opacity})`,
     } as ViewStyle;
   }
 
   return {
     shadowColor: '#5B3A44',
-    shadowOffset: { width: values.offset, height: values.offset },
+    shadowOffset: { width: 0, height: values.offset },
     shadowOpacity: values.opacity,
     shadowRadius: values.blur / 2,
     elevation: values.elevation,

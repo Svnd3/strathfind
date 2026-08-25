@@ -76,17 +76,25 @@ export default function ItemDetailScreen() {
   );
 
   if (loading) return <RouteLoadingScreen />;
-  if (!role) return <Redirect href="/auth" />;
+  if (!role) {
+    return (
+      <Redirect
+        href={{
+          pathname: '/auth',
+          params: { returnTo: `/item/${encodeURIComponent(itemId)}` },
+        }}
+      />
+    );
+  }
 
   if (!item) {
     return (
       <Screen>
         <ContentShell style={styles.shell}>
-          <TextButton icon={ArrowLeft} onPress={() => router.back()}>Back</TextButton>
+          <TextButton icon={ArrowLeft} onPress={() => router.back()} style={styles.topbarAction}>Back</TextButton>
           <EmptyState
             actionLabel="Browse reports"
-            message="It may have been returned, archived, or removed."
-            onAction={() => router.replace('/(student)/find')}
+            onAction={() => router.replace('/lost')}
             title="Report not found"
           />
         </ContentShell>
@@ -171,10 +179,7 @@ export default function ItemDetailScreen() {
         {params.created === '1' ? (
           <Surface padding="md" tone="inset" style={styles.createdBanner}>
             <CheckCircle2 color={palette.success} size={22} />
-            <View style={{ flex: 1 }}>
-              <AppText color={palette.success} variant="bodyStrong">Report published</AppText>
-              <AppText color={palette.inkSoft} variant="support">We are checking for possible campus matches.</AppText>
-            </View>
+            <AppText color={palette.success} variant="bodyStrong">Report published</AppText>
           </Surface>
         ) : null}
 
@@ -210,18 +215,18 @@ export default function ItemDetailScreen() {
                 <Building2 color={item.status === 'handoff_due' ? palette.danger : palette.wine} size={23} />
                 <View style={{ flex: 1, gap: spacing.xxs }}>
                   <AppText color={item.status === 'handoff_due' ? palette.danger : palette.ink} variant="bodyStrong">
-                    {item.status === 'at_office' ? 'Held by campus staff' : '24-hour custody route'}
+                    {item.status === 'at_office' ? 'At the campus desk' : '24-hour handoff'}
                   </AppText>
                   <AppText color={palette.muted} variant="support">
                     {item.status === 'at_office'
-                      ? `Collect from ${item.handoffPoint ?? 'the lost and found desk'} after verification.`
-                      : `If unclaimed, this item goes to ${item.handoffPoint ?? 'the lost and found desk'}.`}
+                      ? item.handoffPoint ?? 'Lost and found desk'
+                      : `Then: ${item.handoffPoint ?? 'lost and found desk'}`}
                   </AppText>
                   {handoffCode ? (
                     <View style={styles.handoffCode}>
                       <AppText color={palette.muted} variant="micro">STAFF HANDOFF CODE</AppText>
                       <AppText selectable style={styles.codeText} variant="h2">{handoffCode}</AppText>
-                      <AppText color={palette.muted} variant="support">Show this only after staff receive the item.</AppText>
+                      <AppText color={palette.muted} variant="support">Show staff after handoff.</AppText>
                     </View>
                   ) : canIssueHandoffCode ? (
                     <SecondaryButton
@@ -237,7 +242,7 @@ export default function ItemDetailScreen() {
               </Surface>
             ) : null}
 
-            <Surface padding="lg" style={styles.contactCard}>
+            <Surface padding="lg" tone="strong" style={styles.contactCard}>
               <View style={styles.contactHeading}>
                 <View style={styles.holderAvatar}>
                   <AppText color={palette.yellow} variant="bodyStrong">{item.holderName.slice(0, 1)}</AppText>
@@ -258,17 +263,17 @@ export default function ItemDetailScreen() {
               </View>
 
               {isAdmin ? (
-                <AppText color={palette.muted} variant="support">Admin access is audited. Review claims in the operations workspace.</AppText>
+                <AppText color={palette.muted} variant="support">Audited access</AppText>
               ) : ownsReport ? (
-                <AppText color={palette.muted} variant="support">Your number stays masked until you approve an ownership claim.</AppText>
+                <AppText color={palette.muted} variant="support">Hidden until you approve a claim.</AppText>
               ) : claimAccepted ? (
-                <AppText color={palette.muted} variant="support">Claim approved. You can now explicitly reveal the contact number.</AppText>
+                <AppText color={palette.muted} variant="support">Claim approved</AppText>
               ) : myClaim?.status === 'pending' ? (
-                <AppText color={palette.muted} variant="support">Claim pending. Contact stays masked until the report holder approves it.</AppText>
+                <AppText color={palette.muted} variant="support">Waiting for approval</AppText>
               ) : myClaim?.status === 'declined' ? (
-                <AppText color={palette.muted} variant="support">That claim could not be verified. You may submit a clearer private detail.</AppText>
+                <AppText color={palette.muted} variant="support">Add a clearer private detail.</AppText>
               ) : (
-                <AppText color={palette.muted} variant="support">Submit a private ownership detail. Contact unlocks only after approval.</AppText>
+                <AppText color={palette.muted} variant="support">Unlocks after claim approval.</AppText>
               )}
 
               {contact ? (
@@ -288,7 +293,6 @@ export default function ItemDetailScreen() {
               <Surface padding="lg" tone="strong" style={styles.claimBox}>
                 <View style={styles.stepHeading}>
                   <AppText variant="h3">Ownership checks</AppText>
-                  <AppText color={palette.muted} variant="support">Approve only when the private detail matches. The claimant sees your number only after approval.</AppText>
                 </View>
                 {managedClaims.map((claim) => (
                   <View key={claim.id} style={styles.reviewClaim}>
@@ -315,7 +319,7 @@ export default function ItemDetailScreen() {
                   <View style={styles.returnBox}>
                     <View style={{ flex: 1, gap: spacing.xxs }}>
                       <AppText variant="bodyStrong">Complete the handover</AppText>
-                      <AppText color={palette.muted} variant="support">Confirm only after the verified owner or finder has the item.</AppText>
+                      <AppText color={palette.muted} variant="support">Confirm after the item changes hands.</AppText>
                     </View>
                     {returnConfirm ? (
                       <View style={styles.claimActions}>
@@ -361,10 +365,7 @@ export default function ItemDetailScreen() {
         </View>
 
         <View style={styles.safetyFooter}>
-          <View style={{ flex: 1, gap: spacing.xxs }}>
-            <AppText variant="bodyStrong">Meet somewhere staffed and public.</AppText>
-            <AppText color={palette.muted} variant="support">Never share passwords, PINs or payment details.</AppText>
-          </View>
+          <AppText style={{ flex: 1 }} variant="bodyStrong">Meet in a staffed public place.</AppText>
           <SecondaryButton
             disabled={flaggedItemIds.includes(item.id)}
             icon={Flag}
@@ -378,7 +379,6 @@ export default function ItemDetailScreen() {
           <Surface padding="lg" tone="strong" style={styles.flagBox}>
             <View style={styles.stepHeading}>
               <AppText variant="h3">Send to campus staff</AppText>
-              <AppText color={palette.muted} variant="support">Describe inaccurate, unsafe or inappropriate content. Your report is not public.</AppText>
             </View>
             <TextArea
               label="What needs review?"
@@ -415,6 +415,7 @@ function Meta({ icon: Icon, label, value, urgent = false }: { icon: typeof MapPi
 const styles = StyleSheet.create({
   shell: { gap: spacing.lg, paddingTop: spacing.md },
   topbar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  topbarAction: { alignSelf: 'center' },
   createdBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderColor: palette.success },
   detailGrid: { gap: spacing.xl },
   detailGridWide: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xxl },

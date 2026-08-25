@@ -4,13 +4,13 @@
   <desc id="strathfind-lockup-desc">The StrathFind magnifying-glass mark beside a custom geometric StrathFind wordmark.</desc>
 
   <g shape-rendering="geometricPrecision">
-    <rect x="40" y="40" width="360" height="360" rx="80" fill="#7B0323"/>
+    <rect x="40" y="40" width="360" height="360" rx="80" fill="#711C3A"/>
     <circle cx="188" cy="178" r="86" fill="#000000"/>
     <path d="M241 231 323 313" fill="none" stroke="#000000" stroke-width="45" stroke-linecap="round"/>
-    <circle cx="188" cy="178" r="57" fill="#FFFF2E"/>
+    <circle cx="188" cy="178" r="57" fill="#F2C45E"/>
   </g>
 
-  <g fill="none" stroke="#7B0323" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <g fill="none" stroke="#711C3A" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M560 156h-46c-22 0-34 12-34 31 0 21 13 31 36 31h10c23 0 36 11 36 33 0 21-14 33-37 33h-45"/>
     <path d="M582 156h78M621 156v128"/>
     <path d="M682 284V156h40c26 0 40 13 40 35s-14 35-40 35h-40M720 226l45 58"/>

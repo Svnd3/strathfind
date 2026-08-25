@@ -1,12 +1,13 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
-import { ArrowLeft, ArrowRight, Camera, Check, Clock3, LockKeyhole, MapPin, Search } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, ArrowRight, Camera, Check, Clock3, LockKeyhole, Search } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import {
   AppText,
+  CampusLocationField,
   CategoryArt,
   Chip,
   ContentShell,
@@ -22,11 +23,30 @@ import {
 } from '@/components/strathfind';
 import { palette, radius, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
-import { categories, handoffPoints } from '@/lib/mock-data';
+import { categories, handoffPoints } from '@/lib/catalog';
+import { readPreference, writePreference } from '@/lib/preferences';
 import type { ItemCategory, ItemKind, ReportDraft } from '@/lib/types';
 import { useAppState } from '@/state';
 
 type TimeChoice = 'now' | 'earlier' | 'yesterday' | 'custom';
+const PENDING_REPORT_KEY = 'strathfind.pending-report.v1';
+const stepLabels = ['Item', 'Place', 'Review'] as const;
+
+interface PendingReport {
+  savedAt: string;
+  kind: ItemKind;
+  category: ItemCategory | null;
+  title: string;
+  color: string;
+  description: string;
+  location: string;
+  occurrenceDate: string;
+  occurrenceTime: string;
+  timeChoice: TimeChoice;
+  privateClue: string;
+  handoffPoint: string;
+  imageUri?: string;
+}
 
 function toLocalDate(value: Date) {
   const year = value.getFullYear();
@@ -50,13 +70,14 @@ function quickTime(choice: Exclude<TimeChoice, 'custom'>) {
 }
 
 export default function ReportScreen() {
+  const params = useLocalSearchParams<{ kind?: string; restore?: string }>();
   const { width } = useWindowDimensions();
   const compact = width < 700;
-  const { createReport, loading } = useAppState();
+  const { createReport, isAuthenticated, loading } = useAppState();
   const [referenceNow] = useState(() => Date.now());
   const [step, setStep] = useState(0);
-  const [kind, setKind] = useState<ItemKind>('found');
-  const [category, setCategory] = useState<ItemCategory>('electronics');
+  const [kind, setKind] = useState<ItemKind>(params.kind === 'lost' ? 'lost' : 'found');
+  const [category, setCategory] = useState<ItemCategory | null>(null);
   const [title, setTitle] = useState('');
   const [color, setColor] = useState('');
   const [description, setDescription] = useState('');
@@ -78,6 +99,26 @@ export default function ReportScreen() {
     ? new Date(occurredAt.getTime() + 24 * 3_600_000)
     : null;
 
+  useEffect(() => {
+    if (params.restore !== '1') return;
+    void readPreference<PendingReport | null>(PENDING_REPORT_KEY, null).then((draft) => {
+      if (!draft || Date.now() - new Date(draft.savedAt).getTime() > 24 * 3_600_000) return;
+      setKind(draft.kind);
+      setCategory(draft.category);
+      setTitle(draft.title);
+      setColor(draft.color);
+      setDescription(draft.description);
+      setLocation(draft.location);
+      setOccurrenceDate(draft.occurrenceDate);
+      setOccurrenceTime(draft.occurrenceTime);
+      setTimeChoice(draft.timeChoice);
+      setPrivateClue(draft.privateClue);
+      setHandoffPoint(draft.handoffPoint);
+      setImageUri(draft.imageUri);
+      setStep(2);
+    });
+  }, [params.restore]);
+
   const selectQuickTime = (choice: Exclude<TimeChoice, 'custom'>) => {
     const value = quickTime(choice);
     setTimeChoice(choice);
@@ -98,15 +139,24 @@ export default function ReportScreen() {
       quality: 0.72,
     });
     if (!result.canceled) {
-      setImageUri(result.assets[0]?.uri);
+      const asset = result.assets[0];
+      if (asset?.fileSize && asset.fileSize > 8 * 1024 * 1024) {
+        setError('Choose an image smaller than 8 MB.');
+        return;
+      }
+      if (asset?.mimeType && !asset.mimeType.startsWith('image/')) {
+        setError('Choose a photo file.');
+        return;
+      }
+      setImageUri(asset?.uri);
       setError('');
       void haptics.select();
     }
   };
 
   const validateStep = () => {
-    if (step === 0 && (title.trim().length < 2 || color.trim().length < 2)) {
-      setError('Use at least 2 characters for the title and colour.');
+    if (step === 0 && (!category || title.trim().length < 2 || color.trim().length < 2)) {
+      setError('Choose a category, then add a short title and colour.');
       return false;
     }
     if (step === 1 && (location.trim().length < 2 || privateClue.trim().length < 5)) {
@@ -132,6 +182,11 @@ export default function ReportScreen() {
       setError('Enter a valid date and time.');
       return;
     }
+    if (!category) {
+      setError('Choose a category.');
+      setStep(0);
+      return;
+    }
     const draft: ReportDraft = {
       kind,
       title,
@@ -144,8 +199,31 @@ export default function ReportScreen() {
       privateClue,
       handoffPoint,
     };
+    if (!isAuthenticated) {
+      await writePreference<PendingReport>(PENDING_REPORT_KEY, {
+        savedAt: new Date().toISOString(),
+        kind,
+        category,
+        title,
+        color,
+        description,
+        location,
+        occurrenceDate,
+        occurrenceTime,
+        timeChoice,
+        privateClue,
+        handoffPoint,
+        imageUri,
+      });
+      router.push({
+        pathname: '/auth',
+        params: { mode: 'sign-in', returnTo: '/report-found?restore=1' },
+      });
+      return;
+    }
     const result = await createReport(draft);
     if (!result.ok) return setError(result.error);
+    await writePreference(PENDING_REPORT_KEY, null);
     router.replace({ pathname: '/item/[id]', params: { id: result.data.id, created: '1' } });
   };
 
@@ -153,12 +231,20 @@ export default function ReportScreen() {
     <Screen>
       <ContentShell maxWidth={840} style={styles.shell}>
         <View style={styles.heading}>
-          <AppText color={palette.wine} variant="micro">NEW REPORT</AppText>
-          <AppText accessibilityRole="header" variant="h1">Help it find its way.</AppText>
-          <AppText color={palette.muted} variant="body">Clear details. One private clue. Safer returns.</AppText>
+          <TextButton icon={ArrowLeft} onPress={() => router.back()}>Back</TextButton>
+          <AppText accessibilityRole="header" variant="h1">Report {kind}</AppText>
         </View>
 
-        <View accessibilityLabel={`Step ${step + 1} of 3`} style={styles.progress}>
+        <View
+          accessibilityLabel={`Step ${step + 1} of 3, ${stepLabels[step]}`}
+          accessibilityRole="progressbar"
+          accessibilityValue={{ min: 1, max: 3, now: step + 1, text: stepLabels[step] }}
+          style={styles.progressBlock}
+        >
+          <AppText color={palette.muted} variant="micro">
+            STEP {step + 1} OF 3 · {stepLabels[step].toUpperCase()}
+          </AppText>
+          <View style={styles.progress}>
           {progress.map((active, index) => (
             <View key={index} style={styles.progressGroup}>
               <View style={[styles.stepDot, active && styles.stepDotActive]}>
@@ -169,14 +255,14 @@ export default function ReportScreen() {
               {index < 2 ? <View style={[styles.progressLine, index < step && styles.progressLineActive]} /> : null}
             </View>
           ))}
+          </View>
         </View>
 
-        <Surface padding={compact ? 'md' : 'xl'} style={styles.form}>
+        <Surface padding={compact ? 'md' : 'xl'} tone="strong" style={styles.form}>
           {step === 0 ? (
             <View style={styles.stepContent}>
               <View style={styles.stepHeading}>
-                <AppText variant="h2">What happened?</AppText>
-                <AppText color={palette.muted} variant="body">Start with what another student can recognise.</AppText>
+                <AppText variant="h2">Item</AppText>
               </View>
               <SegmentedControl
                 label="Report type"
@@ -185,14 +271,24 @@ export default function ReportScreen() {
                 value={kind}
               />
               <View style={[styles.photoRow, !compact && styles.photoRowWide]}>
-                <View style={styles.photoPreview}>
+                <Pressable
+                  accessibilityLabel={imageUri ? 'Change item photo' : 'Add item photo, optional'}
+                  accessibilityRole="button"
+                  onPress={() => void pickImage()}
+                  style={({ pressed }) => [styles.photoPreview, pressed && { opacity: 0.78 }]}
+                >
                   {imageUri
                     ? <Image accessibilityLabel="Selected item photo" contentFit="cover" source={{ uri: imageUri }} style={StyleSheet.absoluteFill} />
-                    : <CategoryArt category={category} size={compact ? 120 : 156} style={{ width: '100%', height: '100%' }} />}
-                </View>
+                    : (
+                      <View style={styles.emptyPhoto}>
+                        <Camera aria-hidden color={palette.wine} size={30} strokeWidth={2} />
+                        <AppText color={palette.wine} variant="micro">ADD PHOTO</AppText>
+                      </View>
+                    )}
+                </Pressable>
                 <View style={styles.photoCopy}>
-                  <AppText variant="bodyStrong">Add a clear photo</AppText>
-                  <AppText color={palette.muted} variant="support">Avoid faces, student cards and private documents.</AppText>
+                  <AppText variant="bodyStrong">Photo · optional</AppText>
+                  <AppText color={palette.muted} variant="support">Avoid faces and ID numbers.</AppText>
                   <SecondaryButton icon={Camera} onPress={() => void pickImage()}>{imageUri ? 'Change photo' : 'Choose photo'}</SecondaryButton>
                 </View>
               </View>
@@ -233,14 +329,11 @@ export default function ReportScreen() {
           {step === 1 ? (
             <View style={styles.stepContent}>
               <View style={styles.stepHeading}>
-                <AppText variant="h2">Where and when?</AppText>
-                <AppText color={palette.muted} variant="body">Approximate places protect privacy while helping people search.</AppText>
+                <AppText variant="h2">Place &amp; time</AppText>
               </View>
-              <TextField
+              <CampusLocationField
                 label={kind === 'found' ? 'Where was it found?' : 'Where was it last seen?'}
-                leading={<MapPin color={palette.muted} size={20} />}
                 onChangeText={setLocation}
-                placeholder="Main library, level 2"
                 value={location}
               />
               <View style={styles.choiceGroup}>
@@ -281,8 +374,8 @@ export default function ReportScreen() {
               <Surface padding="md" tone="inset" style={styles.privateBox}>
                 <LockKeyhole color={palette.wine} size={24} />
                 <View style={{ flex: 1, gap: spacing.xxs }}>
-                  <AppText variant="bodyStrong">Keep one detail private</AppText>
-                  <AppText color={palette.muted} variant="support">We show the question, never your expected answer.</AppText>
+                  <AppText variant="bodyStrong">Private clue</AppText>
+                  <AppText color={palette.muted} variant="support">Used to verify the owner.</AppText>
                 </View>
               </Surface>
               <TextArea
@@ -300,7 +393,7 @@ export default function ReportScreen() {
                       <Chip key={point} label={point} onPress={() => setHandoffPoint(point)} selected={handoffPoint === point} />
                     ))}
                   </View>
-                  <AppText color={palette.muted} variant="support">If unclaimed after 24 hours, take it here.</AppText>
+                  <AppText color={palette.muted} variant="support">Unclaimed after 24h? Take it here.</AppText>
                 </View>
               ) : null}
             </View>
@@ -309,13 +402,16 @@ export default function ReportScreen() {
           {step === 2 ? (
             <View style={styles.stepContent}>
               <View style={styles.stepHeading}>
-                <AppText variant="h2">Ready to publish?</AppText>
-                <AppText color={palette.muted} variant="body">Only verified people at your campus will see this report.</AppText>
+                <AppText variant="h2">Review</AppText>
               </View>
               <Surface padding="md" tone="strong" style={styles.reviewCard}>
-                <CategoryArt category={category} size={112} />
+                {imageUri ? (
+                  <Image accessibilityLabel={`Photo of ${title}`} contentFit="cover" source={{ uri: imageUri }} style={styles.reviewImage} />
+                ) : category ? (
+                  <CategoryArt category={category} size={112} />
+                ) : null}
                 <View style={styles.reviewCopy}>
-                  <AppText color={palette.muted} variant="micro">{kind.toUpperCase()} · {getCategoryLabel(category).toUpperCase()}</AppText>
+                  <AppText color={palette.muted} variant="micro">{kind.toUpperCase()} · {category ? getCategoryLabel(category).toUpperCase() : 'UNCATEGORISED'}</AppText>
                   <AppText variant="h3">{title}</AppText>
                   <AppText color={palette.inkSoft} variant="support">{color} · {location}</AppText>
                 </View>
@@ -345,7 +441,9 @@ export default function ReportScreen() {
             ) : <View />}
             {step < 2
               ? <PrimaryButton icon={ArrowRight} iconPosition="right" onPress={next}>Continue</PrimaryButton>
-              : <PrimaryButton icon={Check} loading={loading} onPress={() => void publish()}>Publish report</PrimaryButton>}
+              : <PrimaryButton icon={isAuthenticated ? Check : LockKeyhole} loading={loading} onPress={() => void publish()}>
+                  {isAuthenticated ? 'Publish report' : 'Sign in to publish'}
+                </PrimaryButton>}
           </View>
         </Surface>
       </ContentShell>
@@ -367,7 +465,8 @@ function ReviewRow({ icon: Icon, title, copy }: { icon: typeof Clock3; title: st
 
 const styles = StyleSheet.create({
   shell: { gap: spacing.xl, paddingTop: spacing.xl },
-  heading: { gap: spacing.xs },
+  heading: { gap: spacing.md },
+  progressBlock: { width: '100%', maxWidth: 420, alignSelf: 'center', gap: spacing.xs },
   progress: { flexDirection: 'row', alignItems: 'center', maxWidth: 420, alignSelf: 'center' },
   progressGroup: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   stepDot: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.surfaceStrong },
@@ -379,7 +478,18 @@ const styles = StyleSheet.create({
   stepHeading: { gap: spacing.xs },
   photoRow: { gap: spacing.md },
   photoRowWide: { flexDirection: 'row', alignItems: 'center' },
-  photoPreview: { width: 156, height: 132, alignSelf: 'center', overflow: 'hidden', borderRadius: radius.lg, backgroundColor: palette.inset },
+  photoPreview: {
+    width: 164,
+    height: 164,
+    alignSelf: 'center',
+    overflow: 'hidden',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: palette.line,
+    backgroundColor: palette.inset,
+  },
+  emptyPhoto: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   photoCopy: { flex: 1, gap: spacing.xs },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   fieldRow: { gap: spacing.md },
@@ -388,6 +498,7 @@ const styles = StyleSheet.create({
   choiceLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   privateBox: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   reviewCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  reviewImage: { width: 112, height: 112, borderRadius: radius.lg },
   reviewCopy: { flex: 1, gap: spacing.xs },
   reviewList: { gap: spacing.sm },
   reviewRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

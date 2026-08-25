@@ -1,4 +1,3 @@
-import * as SecureStore from 'expo-secure-store';
 import * as Linking from 'expo-linking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -10,11 +9,13 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { Platform } from 'react-native';
 
 import { haptics } from '@/lib/haptics';
 import { createHandoffDeadline, maskPhone } from '@/lib/item-utils';
-import { initialClaims, initialItems } from '@/lib/mock-data';
+import {
+  CURRENT_PRIVACY_NOTICE_VERSION,
+  CURRENT_TERMS_VERSION,
+} from '@/lib/legal';
 import {
   acceptRemoteCustody,
   completeRemoteReturn,
@@ -22,6 +23,7 @@ import {
   createRemoteReport,
   createRemoteUniversityCode,
   fetchCampusUser,
+  fetchPublicItemFeed,
   fetchRemoteSnapshot,
   flagRemoteItem,
   issueRemoteHandoffCode,
@@ -42,9 +44,6 @@ import type {
   ReportDraft,
   UserRole,
 } from '@/lib/types';
-
-const DEMO_SESSION_KEY = 'strathfind.demo-session.v1';
-export const DEMO_UNIVERSITY_CODE = 'SF-DEMO-2026';
 
 export type PublicItem = Omit<LostFoundItem, 'holderPhone'> & {
   maskedPhone: string;
@@ -84,6 +83,7 @@ export interface SignUpInput {
   phone: string;
   campusId: string;
   universityCode: string;
+  acceptedTerms: boolean;
 }
 
 export type ActionResult<T = undefined> =
@@ -91,7 +91,7 @@ export type ActionResult<T = undefined> =
   | { ok: false; error: string };
 
 export interface AppStateValue {
-  mode: 'demo' | 'supabase';
+  mode: 'setup' | 'supabase';
   user: CampusUser | null;
   role: UserRole | null;
   isAuthenticated: boolean;
@@ -129,59 +129,6 @@ export interface AppStateValue {
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
-
-const demoStudent: CampusUser = {
-  id: 'student-demo',
-  name: 'Amina Kamau',
-  email: 'amina@strathmore.edu',
-  phone: '+254 712 884 042',
-  role: 'student',
-  university: 'Strathmore University',
-  campusId: '151234',
-};
-
-const demoAdmin: CampusUser = {
-  id: 'admin-demo',
-  name: 'Campus Services',
-  email: 'lostandfound@strathmore.edu',
-  phone: '+254 703 034 000',
-  role: 'admin',
-  university: 'Strathmore University',
-  campusId: 'ADMIN-01',
-};
-
-const initialActivity: ActivityEntry[] = [
-  {
-    id: 'activity-match-calculus',
-    kind: 'match',
-    title: 'Possible match',
-    message: 'A report may match your calculus textbook.',
-    itemId: 'calculus-textbook',
-    createdAt: new Date(Date.now() - 36 * 60_000).toISOString(),
-    read: false,
-    audienceIds: ['student-demo'],
-  },
-  {
-    id: 'activity-office-card',
-    kind: 'handoff',
-    title: 'Handoff recorded',
-    message: 'The student card is now at the main gate security desk.',
-    itemId: 'student-card-block-a',
-    createdAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
-    read: true,
-    audienceIds: ['student-demo', 'admin-demo'],
-  },
-  {
-    id: 'activity-admin-due',
-    kind: 'handoff',
-    title: 'Handoff due soon',
-    message: 'The keys report reaches its 24-hour deadline shortly.',
-    itemId: 'keys-sports-field',
-    createdAt: new Date(Date.now() - 20 * 60_000).toISOString(),
-    read: false,
-    audienceIds: ['admin-demo'],
-  },
-];
 
 function uniqueId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -224,43 +171,11 @@ async function sessionMatchesUser(client: SupabaseClient, expectedUserId: string
   }
 }
 
-async function readDemoSession(): Promise<CampusUser | null> {
-  try {
-    const value =
-      Platform.OS === 'web'
-        ? globalThis.localStorage?.getItem(DEMO_SESSION_KEY)
-        : await SecureStore.getItemAsync(DEMO_SESSION_KEY);
-    return value ? (JSON.parse(value) as CampusUser) : null;
-  } catch {
-    return null;
-  }
-}
-
-async function writeDemoSession(user: CampusUser | null) {
-  try {
-    if (Platform.OS === 'web') {
-      if (user) globalThis.localStorage?.setItem(DEMO_SESSION_KEY, JSON.stringify(user));
-      else globalThis.localStorage?.removeItem(DEMO_SESSION_KEY);
-      return;
-    }
-    if (user) await SecureStore.setItemAsync(DEMO_SESSION_KEY, JSON.stringify(user));
-    else await SecureStore.deleteItemAsync(DEMO_SESSION_KEY);
-  } catch {
-    // Persistence is convenient in demo mode, but auth must still work without it.
-  }
-}
-
 export function AppStateProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<CampusUser | null>(null);
-  const [rawItems, setRawItems] = useState<StateItem[]>(() => (
-    isSupabaseConfigured ? [] : initialItems.map((item) => ({ ...item }))
-  ));
-  const [rawClaims, setRawClaims] = useState<Claim[]>(() => (
-    isSupabaseConfigured ? [] : initialClaims.map((claim) => ({ ...claim }))
-  ));
-  const [activity, setActivity] = useState<ActivityEntry[]>(() => (
-    isSupabaseConfigured ? [] : initialActivity
-  ));
+  const [rawItems, setRawItems] = useState<StateItem[]>([]);
+  const [rawClaims, setRawClaims] = useState<Claim[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [revealedContactIds, setRevealedContactIds] = useState<string[]>([]);
   const [rawFlags, setRawFlags] = useState<RemoteItemFlag[]>([]);
   const [flaggedItemIds, setFlaggedItemIds] = useState<string[]>([]);
@@ -279,6 +194,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     setRawFlags([]);
     setFlaggedItemIds([]);
     setRevealedContactIds([]);
+  }, []);
+
+  const loadPublicState = useCallback(async () => {
+    const publicClient = supabase;
+    if (!publicClient) return null;
+
+    const publicItems = await fetchPublicItemFeed(publicClient, { limit: 100 });
+    const { data, error } = await publicClient.auth.getSession();
+    // Do not let an anonymous request that finishes late replace a newly
+    // authenticated snapshot.
+    if (error || data.session) return null;
+
+    setUser(null);
+    setRawItems(publicItems);
+    setRawClaims([]);
+    setActivity([]);
+    setRawFlags([]);
+    setFlaggedItemIds([]);
+    setRevealedContactIds([]);
+    return publicItems;
   }, []);
 
   const discardRemoteSession = useCallback(async (expectedUserId: string) => {
@@ -337,12 +272,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
             }
           } else if (active) {
             const { data: latest } = await remoteClient.auth.getSession();
-            if (active && !latest.session) clearRemoteState();
+            if (active && !latest.session) {
+              clearRemoteState();
+              await loadPublicState();
+            }
           }
-        } else {
-          const stored = await readDemoSession();
-          if (active) setUser(stored);
-        }
+        } else if (active) clearRemoteState();
       } catch {
         if (
           active
@@ -364,6 +299,13 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       if (!active) return;
       if (!session?.user) {
         clearRemoteState();
+        // Supabase advises deferring client queries until this callback has
+        // returned. The public RPC is safe to retry if hydration also ran it.
+        setTimeout(() => {
+          void loadPublicState().catch(() => {
+            // Keep an empty signed-out state while the public feed recovers.
+          });
+        }, 0);
         return;
       }
       const expectedUserId = session.user.id;
@@ -397,20 +339,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       active = false;
       subscription?.data.subscription.unsubscribe();
     };
-  }, [clearRemoteState, loadRemoteState]);
+  }, [clearRemoteState, loadPublicState, loadRemoteState]);
 
   useEffect(() => {
-    if (!supabase || !user) return;
+    if (!supabase) return;
     const interval = setInterval(() => {
-      void loadRemoteState(user).catch(() => {
+      const refresh = user ? loadRemoteState(user) : loadPublicState();
+      void refresh.catch(() => {
         // Keep the last safe snapshot while the connection recovers.
       });
     }, 30_000);
     return () => clearInterval(interval);
-  }, [loadRemoteState, user]);
+  }, [loadPublicState, loadRemoteState, user]);
 
   const signIn = useCallback(
     async ({ email, password, role }: SignInInput): Promise<ActionResult<CampusUser>> => {
+      if (!supabase) {
+        const error = 'Accounts are unavailable until Supabase is connected.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
       let establishedSessionUserId: string | null = null;
       const normalizedEmail = email.trim().toLowerCase();
       if (!normalizedEmail || !password) {
@@ -421,43 +369,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
       setLoading(true);
       try {
-        if (supabase) {
-          const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
-          establishedSessionUserId = data.session?.user.id ?? null;
-          if (error || !data.user) {
-            if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
-            const message = error?.message ?? 'Sign in could not be completed.';
-            showToast(message, 'error');
-            return { ok: false, error: message };
-          }
-          const signedInUser = await fetchCampusUser(supabase, data.user);
-          if (signedInUser.role !== role) {
-            await discardRemoteSession(signedInUser.id);
-            const message = `This account does not have ${role} access.`;
-            showToast(message, 'error');
-            return { ok: false, error: message };
-          }
-          const snapshot = await loadRemoteState(signedInUser);
-          if (!snapshot || !(await sessionMatchesUser(supabase, signedInUser.id))) {
-            throw new Error('The authenticated session changed before sign in completed.');
-          }
-          setUser(signedInUser);
-          await haptics.confirm();
-          showToast('Welcome back.', 'success');
-          return { ok: true, data: signedInUser };
+        const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+        establishedSessionUserId = data.session?.user.id ?? null;
+        if (error || !data.user) {
+          if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
+          const message = error?.message ?? 'Sign in could not be completed.';
+          showToast(message, 'error');
+          return { ok: false, error: message };
         }
-
-        const signedInUser = role === 'admin'
-          ? { ...demoAdmin, email: normalizedEmail }
-          : { ...demoStudent, email: normalizedEmail };
+        const signedInUser = await fetchCampusUser(supabase, data.user);
+        if (signedInUser.role !== role) {
+          await discardRemoteSession(signedInUser.id);
+          const message = `This account does not have ${role} access.`;
+          showToast(message, 'error');
+          return { ok: false, error: message };
+        }
+        const snapshot = await loadRemoteState(signedInUser);
+        if (!snapshot || !(await sessionMatchesUser(supabase, signedInUser.id))) {
+          throw new Error('The authenticated session changed before sign in completed.');
+        }
         setUser(signedInUser);
-        setRevealedContactIds([]);
-        setFlaggedItemIds(
-          rawFlags
-            .filter((flag) => flag.status === 'open' && flag.submittedBy === signedInUser.id)
-            .map((flag) => flag.itemId),
-        );
-        await writeDemoSession(signedInUser);
         await haptics.confirm();
         showToast('Welcome back.', 'success');
         return { ok: true, data: signedInUser };
@@ -470,16 +401,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         setLoading(false);
       }
     },
-    [discardRemoteSession, loadRemoteState, rawFlags, showToast],
+    [discardRemoteSession, loadRemoteState, showToast],
   );
 
   const signUp = useCallback(
     async (input: SignUpInput): Promise<ActionResult<CampusUser | null>> => {
+      if (!supabase) {
+        const error = 'Accounts are unavailable until Supabase is connected.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
       let establishedSessionUserId: string | null = null;
       const name = input.name.trim();
       const email = input.email.trim().toLowerCase();
       const universityCode = input.universityCode.trim().toUpperCase();
       const phoneE164 = normalizeE164(input.phone);
+      if (!input.acceptedTerms) {
+        const error = 'Accept the Terms and acknowledge the Privacy Notice to continue.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
       if (!name || !email || !input.phone.trim() || !input.campusId.trim()) {
         const error = 'Complete your student profile.';
         showToast(error, 'error');
@@ -503,59 +444,39 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
       setLoading(true);
       try {
-        if (supabase) {
-          const { data, error } = await supabase.auth.signUp({
-            email,
-            password: input.password,
-            options: {
-              emailRedirectTo: Linking.createURL('/auth-callback'),
-              data: {
-                display_name: name,
-                phone_e164: phoneE164,
-                student_number: input.campusId.trim(),
-                university_code: universityCode,
-              },
-            },
-          });
-          establishedSessionUserId = data.session?.user.id ?? null;
-          if (error) {
-            if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
-            showToast(error.message, 'error');
-            return { ok: false, error: error.message };
-          }
-          const signedUpUser = data.user && data.session ? await fetchCampusUser(supabase, data.user) : null;
-          if (signedUpUser) {
-            const snapshot = await loadRemoteState(signedUpUser);
-            if (!snapshot || !(await sessionMatchesUser(supabase, signedUpUser.id))) {
-              throw new Error('The authenticated session changed before signup completed.');
-            }
-            setUser(signedUpUser);
-          }
-          await haptics.confirm();
-          showToast(signedUpUser ? 'Account ready.' : 'Check your email to finish signup.', 'success');
-          return { ok: true, data: signedUpUser };
-        }
-
-        if (universityCode !== DEMO_UNIVERSITY_CODE) {
-          const error = `Use ${DEMO_UNIVERSITY_CODE} in demo mode.`;
-          showToast(error, 'error');
-          return { ok: false, error };
-        }
-        const signedUpUser: CampusUser = {
-          id: uniqueId('student'),
-          name,
+        const { data, error } = await supabase.auth.signUp({
           email,
-          phone: phoneE164,
-          role: 'student',
-          university: 'Strathmore University',
-          campusId: input.campusId.trim(),
-        };
-        setUser(signedUpUser);
-        setRevealedContactIds([]);
-        setFlaggedItemIds([]);
-        await writeDemoSession(signedUpUser);
+          password: input.password,
+          options: {
+            emailRedirectTo: Linking.createURL('/auth-callback'),
+            data: {
+              display_name: name,
+              phone_e164: phoneE164,
+              student_number: input.campusId.trim(),
+              university_code: universityCode,
+              terms_accepted: true,
+              terms_version: CURRENT_TERMS_VERSION,
+              privacy_notice_acknowledged: true,
+              privacy_notice_version: CURRENT_PRIVACY_NOTICE_VERSION,
+            },
+          },
+        });
+        establishedSessionUserId = data.session?.user.id ?? null;
+        if (error) {
+          if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
+          showToast(error.message, 'error');
+          return { ok: false, error: error.message };
+        }
+        const signedUpUser = data.user && data.session ? await fetchCampusUser(supabase, data.user) : null;
+        if (signedUpUser) {
+          const snapshot = await loadRemoteState(signedUpUser);
+          if (!snapshot || !(await sessionMatchesUser(supabase, signedUpUser.id))) {
+            throw new Error('The authenticated session changed before signup completed.');
+          }
+          setUser(signedUpUser);
+        }
         await haptics.confirm();
-        showToast('Account ready.', 'success');
+        showToast(signedUpUser ? 'Account ready.' : 'Check your email to finish signup.', 'success');
         return { ok: true, data: signedUpUser };
       } catch {
         if (establishedSessionUserId) await discardRemoteSession(establishedSessionUserId);
@@ -573,20 +494,21 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     setLoading(true);
     try {
       if (supabase) await supabase.auth.signOut();
-      else await writeDemoSession(null);
     } catch {
       // Clear local access even when the remote session cannot be reached.
     } finally {
-      if (supabase) clearRemoteState();
-      else {
-        setUser(null);
-        setRevealedContactIds([]);
-        setFlaggedItemIds([]);
+      clearRemoteState();
+      if (supabase) {
+        try {
+          await loadPublicState();
+        } catch {
+          // Signed-out state remains safe and empty until the next refresh.
+        }
       }
       showToast('Signed out.', 'info');
       setLoading(false);
     }
-  }, [clearRemoteState, showToast]);
+  }, [clearRemoteState, loadPublicState, showToast]);
 
   const createReport = useCallback(
     async (draft: ReportDraft): Promise<ActionResult<PublicItem>> => {
@@ -648,7 +570,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           itemId: item.id,
           createdAt: now,
           read: false,
-          audienceIds: [user.id, 'admin-demo'],
+          audienceIds: [user.id],
         },
         ...current,
       ]);
@@ -723,7 +645,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           itemId,
           createdAt: now,
           read: false,
-          audienceIds: [user.id, item.finderId, item.ownerId, 'admin-demo'].filter(Boolean) as string[],
+          audienceIds: [user.id, item.finderId, item.ownerId].filter(Boolean) as string[],
         },
         ...current,
       ]);
@@ -801,7 +723,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         itemId: item.id,
         createdAt: new Date().toISOString(),
         read: false,
-        audienceIds: [claim.claimantId, item.finderId, item.ownerId, 'admin-demo'].filter(Boolean) as string[],
+        audienceIds: [claim.claimantId, item.finderId, item.ownerId].filter(Boolean) as string[],
       }, ...current]);
       await (approve ? haptics.confirm() : haptics.warn());
       showToast(approve ? 'Claim approved.' : 'Claim declined.', approve ? 'success' : 'info');
@@ -858,7 +780,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           itemId,
           createdAt: new Date().toISOString(),
           read: true,
-          audienceIds: [user.id, 'admin-demo'],
+          audienceIds: [user.id],
         },
         ...current,
       ]);
@@ -912,7 +834,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         itemId,
         createdAt: now,
         read: false,
-        audienceIds: [user.id, 'admin-demo'],
+        audienceIds: [user.id],
       }, ...current]);
       showToast('Listing sent to campus staff.', 'success');
       await haptics.confirm();
@@ -1125,8 +1047,8 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         ...item,
         status: 'at_office',
         handoffPoint: handoffPoint?.trim() || item.handoffPoint || 'Lost and found desk',
-        holderName: 'Campus Lost & Found',
-        holderPhone: demoAdmin.phone,
+        holderName: user.name,
+        holderPhone: user.phone,
       };
       setRawItems((current) =>
         current.map((candidate) => (candidate.id === itemId ? updated : candidate)),
@@ -1140,7 +1062,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           itemId,
           createdAt: new Date().toISOString(),
           read: false,
-          audienceIds: [user.id, item.finderId, item.ownerId, 'admin-demo'].filter(Boolean) as string[],
+          audienceIds: [user.id, item.finderId, item.ownerId].filter(Boolean) as string[],
         },
         ...current,
       ]);
@@ -1180,10 +1102,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         return { ok: false, error };
       }
     }
-    const code = `STRATH-${Math.floor(1000 + Math.random() * 9000)}`;
-    await haptics.confirm();
-    showToast('Preview code rotated.', 'success');
-    return { ok: true, data: code };
+    const error = 'University codes are unavailable until Supabase is connected.';
+    showToast(error, 'warning');
+    return { ok: false, error };
   }, [showToast, user]);
 
   const items = useMemo(() => rawItems.map(toPublicItem), [rawItems]);
@@ -1240,7 +1161,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<AppStateValue>(
     () => ({
-      mode: isSupabaseConfigured ? 'supabase' : 'demo',
+      mode: isSupabaseConfigured ? 'supabase' : 'setup',
       user,
       role: user?.role ?? null,
       isAuthenticated: Boolean(user),

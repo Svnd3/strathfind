@@ -1,7 +1,7 @@
-import { router } from 'expo-router';
-import { ArrowLeft, Eye, EyeOff, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react-native';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
+import { ArrowLeft, Check, Eye, EyeOff, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react-native';
 import { useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
   AppText,
@@ -9,23 +9,26 @@ import {
   ContentShell,
   PrimaryButton,
   Screen,
-  SecondaryButton,
-  SegmentedControl,
   Surface,
   TextButton,
   TextField,
 } from '@/components/strathfind';
-import { layout, palette, radius, spacing } from '@/constants/design';
+import { focusRing, palette, radius, spacing } from '@/constants/design';
 import type { UserRole } from '@/lib/types';
-import { DEMO_UNIVERSITY_CODE, useAppState } from '@/state';
+import { useAppState } from '@/state';
 
 type FormMode = 'sign-in' | 'sign-up';
 
+function safeReturnTo(value: string | undefined): Href | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  if (value === '/auth' || value.startsWith('/auth?')) return null;
+  return value as Href;
+}
+
 export default function AuthScreen() {
-  const { width } = useWindowDimensions();
-  const wide = width >= 900;
+  const params = useLocalSearchParams<{ mode?: string; returnTo?: string }>();
   const { loading, mode: dataMode, signIn, signUp } = useAppState();
-  const [formMode, setFormMode] = useState<FormMode>('sign-in');
+  const [formMode, setFormMode] = useState<FormMode>(params.mode === 'sign-up' ? 'sign-up' : 'sign-in');
   const [role, setRole] = useState<UserRole>('student');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -34,136 +37,111 @@ export default function AuthScreen() {
   const [universityCode, setUniversityCode] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [termsFocused, setTermsFocused] = useState(false);
   const [error, setError] = useState('');
 
-  const navigateForRole = (nextRole: UserRole) => {
-    router.replace(nextRole === 'admin' ? '/admin' : '/(student)/find');
+  const navigateAfterAuth = (nextRole: UserRole) => {
+    if (nextRole === 'admin') {
+      router.replace('/admin');
+      return;
+    }
+    router.replace(safeReturnTo(params.returnTo) ?? '/account');
+  };
+
+  const selectMode = (nextMode: FormMode) => {
+    setFormMode(nextMode);
+    setRole('student');
+    setError('');
   };
 
   const submit = async () => {
     setError('');
-    if (formMode === 'sign-in') {
-      const result = await signIn({ email, password, role });
-      if (!result.ok) return setError(result.error);
-      navigateForRole(result.data.role);
+    if (dataMode === 'setup') {
+      setError('Secure accounts are not connected yet.');
       return;
     }
 
-    const result = await signUp({ name, email, phone, campusId, universityCode, password });
-    if (!result.ok) return setError(result.error);
-    if (result.data) navigateForRole('student');
-  };
+    if (formMode === 'sign-in') {
+      const result = await signIn({ email, password, role });
+      if (!result.ok) return setError(result.error);
+      navigateAfterAuth(result.data.role);
+      return;
+    }
 
-  const enterDemo = async (demoRole: UserRole) => {
-    setError('');
-    setRole(demoRole);
-    const result = await signIn({
-      email: demoRole === 'admin' ? 'admin@strathfind.app' : 'student@strathfind.app',
-      password: 'strathfind-demo',
-      role: demoRole,
+    if (!acceptedTerms) {
+      setError('Accept the Terms and Privacy Notice to continue.');
+      return;
+    }
+    const result = await signUp({
+      name,
+      email,
+      phone,
+      campusId,
+      universityCode,
+      password,
+      acceptedTerms,
     });
     if (!result.ok) return setError(result.error);
-    navigateForRole(demoRole);
+    if (result.data) navigateAfterAuth('student');
   };
+
+  const title = formMode === 'sign-up'
+    ? 'Create account'
+    : role === 'admin'
+      ? 'Admin sign in'
+      : 'Sign in';
 
   return (
     <Screen edges={['top', 'left', 'right', 'bottom']}>
-      <ContentShell maxWidth={layout.marketingMax} style={styles.shell}>
+      <ContentShell maxWidth={680} style={styles.shell}>
         <View style={styles.topbar}>
-          <TextButton icon={ArrowLeft} onPress={() => router.back()}>Back</TextButton>
+          <TextButton icon={ArrowLeft} onPress={() => router.back()} style={styles.topbarAction}>Back</TextButton>
           <BrandLockup markSize={40} />
         </View>
 
-        <View style={[styles.body, wide && styles.bodyWide]}>
-          {wide ? (
-            <View style={styles.story}>
-              <View style={styles.storyEyebrow}>
-                <ShieldCheck color={palette.yellow} size={20} />
-                <AppText color={palette.yellow} variant="micro">VERIFIED CAMPUS ACCESS</AppText>
-              </View>
-              <AppText color={palette.white} variant="display">Your campus.{`\n`}Your circle.</AppText>
-              <AppText color="#F2DCE3" style={styles.storyBody} variant="body">
-                Every report stays inside your university community. Contact details appear only after a verified claim.
-              </AppText>
-              <View style={styles.storyPoints}>
-                {['University code required', 'Private proof protects claims', 'Every contact reveal is logged'].map((item) => (
-                  <View key={item} style={styles.storyPoint}>
-                    <View style={styles.checkCircle}><ShieldCheck color={palette.yellow} size={16} /></View>
-                    <AppText color={palette.white} variant="support">{item}</AppText>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          <Surface padding={wide ? 'xl' : 'lg'} style={styles.formCard}>
+        <View style={styles.body}>
+          <Surface padding="xl" style={styles.formCard}>
             <View style={styles.formHeading}>
-              <AppText color={palette.wine} variant="micro">
-                {formMode === 'sign-in' ? 'WELCOME BACK' : 'STUDENT ACCESS'}
-              </AppText>
-              <AppText accessibilityRole="header" variant="h1">
-                {formMode === 'sign-in' ? 'Sign in' : 'Create account'}
-              </AppText>
-              <AppText color={palette.muted} variant="body">
-                {formMode === 'sign-in'
-                  ? 'Continue to your campus lost and found.'
-                  : 'Verify your university before joining.'}
-              </AppText>
+              <AppText accessibilityRole="header" variant="h1">{title}</AppText>
+              {role === 'admin' && formMode === 'sign-in' ? (
+                <View style={styles.adminLabel}>
+                  <LockKeyhole color={palette.wine} size={17} />
+                  <AppText color={palette.inkSoft} variant="support">Invite only</AppText>
+                </View>
+              ) : null}
             </View>
 
-            <View style={styles.modeSwitch}>
-              <SecondaryButton
-                accessibilityState={{ selected: formMode === 'sign-in' }}
-                onPress={() => { setFormMode('sign-in'); setError(''); }}
-                style={formMode === 'sign-in' ? styles.modeActive : styles.modeButton}
-              >
-                Sign in
-              </SecondaryButton>
-              <SecondaryButton
-                accessibilityState={{ selected: formMode === 'sign-up' }}
-                onPress={() => { setFormMode('sign-up'); setRole('student'); setError(''); }}
-                style={formMode === 'sign-up' ? styles.modeActive : styles.modeButton}
-              >
-                Create account
-              </SecondaryButton>
-            </View>
-
-            {formMode === 'sign-in' ? (
-              <SegmentedControl
-                label="Account type"
-                value={role}
-                options={[{ label: 'Student', value: 'student' }, { label: 'Admin', value: 'admin' }]}
-                onChange={setRole}
-              />
+            {dataMode === 'setup' ? (
+              <View style={styles.setupNotice}>
+                <ShieldCheck color={palette.warning} size={20} />
+                <AppText color={palette.warning} style={{ flex: 1 }} variant="support">
+                  Secure sign-in activates after Supabase is connected.
+                </AppText>
+              </View>
             ) : null}
 
             <View style={styles.fields}>
               {formMode === 'sign-up' ? (
                 <>
-                  <TextField
-                    autoComplete="name"
-                    label="Full name"
-                    onChangeText={setName}
-                    placeholder="Your name"
-                    value={name}
-                  />
+                  <TextField autoComplete="name" label="Full name" onChangeText={setName} placeholder="Your name" value={name} />
                   <TextField
                     autoCapitalize="characters"
                     label="University code"
                     onChangeText={setUniversityCode}
-                    placeholder="Provided by your university"
+                    placeholder="Invitation code"
                     value={universityCode}
-                    helpText={dataMode === 'demo' ? `Preview code: ${DEMO_UNIVERSITY_CODE}` : 'Codes expire and allow a limited number of signups.'}
                   />
                   <TextField
                     autoCapitalize="characters"
                     label="Student number"
                     onChangeText={setCampusId}
-                    placeholder="Your campus ID"
+                    placeholder="Campus ID"
                     value={campusId}
                   />
                 </>
               ) : null}
+
               <TextField
                 autoCapitalize="none"
                 autoComplete="email"
@@ -171,9 +149,10 @@ export default function AuthScreen() {
                 keyboardType="email-address"
                 label="University email"
                 onChangeText={setEmail}
-                placeholder="name@university.ac.ke"
+                placeholder="name@strathmore.edu"
                 value={email}
               />
+
               {formMode === 'sign-up' ? (
                 <TextField
                   autoComplete="tel"
@@ -183,9 +162,9 @@ export default function AuthScreen() {
                   onChangeText={setPhone}
                   placeholder="+254 7…"
                   value={phone}
-                  helpText="Hidden until you approve contact after a claim."
                 />
               ) : null}
+
               <TextField
                 autoCapitalize="none"
                 autoComplete={formMode === 'sign-up' ? 'new-password' : 'current-password'}
@@ -199,8 +178,8 @@ export default function AuthScreen() {
                   <Pressable
                     accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                     accessibilityRole="button"
-                    hitSlop={10}
                     onPress={() => setShowPassword((current) => !current)}
+                    style={styles.passwordToggle}
                   >
                     {showPassword
                       ? <EyeOff color={palette.muted} size={20} />
@@ -210,37 +189,63 @@ export default function AuthScreen() {
               />
             </View>
 
-            {role === 'admin' && formMode === 'sign-in' ? (
-              <View style={styles.adminNote}>
-                <LockKeyhole color={palette.wine} size={20} />
-                <AppText color={palette.inkSoft} style={{ flex: 1 }} variant="support">
-                  Admin accounts are issued by campus services. Public admin signup is disabled.
-                </AppText>
-              </View>
-            ) : null}
-
-            {error ? <AppText accessibilityLiveRegion="polite" color={palette.danger} variant="support">{error}</AppText> : null}
-
-            <PrimaryButton fullWidth loading={loading} onPress={() => void submit()}>
-              {formMode === 'sign-in' ? `Continue as ${role}` : 'Verify and create account'}
-            </PrimaryButton>
-
-            {dataMode === 'demo' && formMode === 'sign-in' ? (
-              <View style={styles.demoBox}>
-                <AppText color={palette.muted} variant="micro">INTERACTIVE PREVIEW</AppText>
-                <AppText color={palette.inkSoft} variant="support">
-                  Enter any email and password, or jump straight in.
-                </AppText>
-                <View style={styles.demoActions}>
-                  <TextButton icon={UserRound} onPress={() => void enterDemo('student')}>Student demo</TextButton>
-                  <TextButton icon={LockKeyhole} onPress={() => void enterDemo('admin')}>Admin demo</TextButton>
+            {formMode === 'sign-up' ? (
+              <View style={styles.termsRow}>
+                <Pressable
+                  accessibilityLabel="Accept the Terms and acknowledge the Privacy Notice"
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: acceptedTerms }}
+                  onBlur={() => setTermsFocused(false)}
+                  onFocus={() => setTermsFocused(true)}
+                  onPress={() => setAcceptedTerms((current) => !current)}
+                  style={[styles.checkbox, acceptedTerms && styles.checkboxChecked, focusRing(termsFocused)]}
+                >
+                  {acceptedTerms ? <Check color={palette.white} size={18} strokeWidth={3} /> : null}
+                </Pressable>
+                <View style={styles.termsCopy}>
+                  <AppText color={palette.inkSoft} variant="support">
+                    I accept the Terms and acknowledge the Privacy Notice.
+                  </AppText>
+                  <TextButton onPress={() => router.push('/legal')} style={styles.termsLink}>Read them</TextButton>
                 </View>
               </View>
+            ) : (
+              <TextButton onPress={() => router.push('/legal')} style={styles.legalLink}>
+                Terms &amp; privacy
+              </TextButton>
+            )}
+
+            {error ? (
+              <AppText accessibilityLiveRegion="polite" color={palette.danger} variant="support">{error}</AppText>
             ) : null}
 
-            <AppText align="center" color={palette.muted} variant="support">
-              By continuing, you agree to safe returns and respectful contact.
-            </AppText>
+            <PrimaryButton
+              disabled={dataMode === 'setup' || (formMode === 'sign-up' && !acceptedTerms)}
+              fullWidth
+              loading={loading}
+              onPress={() => void submit()}
+            >
+              {formMode === 'sign-in' ? 'Sign in' : 'Create account'}
+            </PrimaryButton>
+
+            <View style={styles.accountSwitch}>
+              <AppText color={palette.muted} variant="support">
+                {formMode === 'sign-in' ? 'New here?' : 'Already registered?'}
+              </AppText>
+              <TextButton onPress={() => selectMode(formMode === 'sign-in' ? 'sign-up' : 'sign-in')}>
+                {formMode === 'sign-in' ? 'Create account' : 'Sign in'}
+              </TextButton>
+            </View>
+
+            {formMode === 'sign-in' ? (
+              <TextButton
+                icon={role === 'admin' ? UserRound : LockKeyhole}
+                onPress={() => { setRole(role === 'admin' ? 'student' : 'admin'); setError(''); }}
+                style={styles.roleSwitch}
+              >
+                {role === 'admin' ? 'Student sign in' : 'Admin access'}
+              </TextButton>
+            ) : null}
           </Surface>
         </View>
       </ContentShell>
@@ -251,21 +256,43 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   shell: { flex: 1 },
   topbar: { minHeight: 80, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  body: { flex: 1, justifyContent: 'center', paddingVertical: spacing.lg },
-  bodyWide: { minHeight: 720, flexDirection: 'row', alignItems: 'stretch', paddingVertical: spacing.xl },
-  story: { flex: 1, justifyContent: 'center', gap: spacing.lg, padding: spacing.xxl, borderTopLeftRadius: radius.xl, borderBottomLeftRadius: radius.xl, backgroundColor: palette.wine },
-  storyEyebrow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  storyBody: { maxWidth: 520, fontSize: 18, lineHeight: 28 },
-  storyPoints: { gap: spacing.md, marginTop: spacing.md },
-  storyPoint: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  checkCircle: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: palette.black },
-  formCard: { flex: 1, width: '100%', maxWidth: 600, alignSelf: 'center', justifyContent: 'center', gap: spacing.lg },
-  formHeading: { gap: spacing.xs },
-  modeSwitch: { flexDirection: 'row', gap: spacing.xs },
-  modeButton: { flex: 1, borderColor: palette.lineSoft, backgroundColor: palette.surfaceStrong },
-  modeActive: { flex: 1, borderColor: palette.wine, backgroundColor: palette.wineSoft },
+  topbarAction: { alignSelf: 'center' },
+  body: { flex: 1, minHeight: 620, justifyContent: 'center', paddingVertical: spacing.xl },
+  formCard: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: spacing.lg },
+  formHeading: { gap: spacing.sm },
+  adminLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  setupNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: palette.warningSoft,
+  },
   fields: { gap: spacing.md },
-  adminNote: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.wineSoft },
-  demoBox: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: palette.inset },
-  demoActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  passwordToggle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill },
+  termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  checkbox: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: palette.line,
+    backgroundColor: palette.surfaceStrong,
+  },
+  checkboxChecked: { borderColor: palette.wine, backgroundColor: palette.wine },
+  termsCopy: { flex: 1, alignItems: 'flex-start', gap: spacing.xxs },
+  termsLink: { minHeight: 32, paddingHorizontal: 0, paddingVertical: 0 },
+  legalLink: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+  accountSwitch: {
+    minHeight: 48,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xxs,
+  },
+  roleSwitch: { alignSelf: 'center' },
 });

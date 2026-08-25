@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { BellRing, Box, CheckCircle2, Clock3, Eye, Search, ShieldCheck } from 'lucide-react-native';
+import { ArrowLeft, BellRing, Box, CheckCircle2, Clock3, Eye, Search, ShieldCheck } from 'lucide-react-native';
 import { useMemo, useState, type ComponentType } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { LucideProps } from 'lucide-react-native';
@@ -51,11 +51,8 @@ export default function ActivityScreen() {
       <ContentShell style={styles.shell}>
         <View style={styles.top}>
           <View style={styles.heading}>
-            <AppText color={palette.wine} variant="micro">YOUR CAMPUS TRAIL</AppText>
+            <TextButton icon={ArrowLeft} onPress={() => router.back()}>Back</TextButton>
             <AppText accessibilityRole="header" variant="h1">Activity</AppText>
-            <AppText color={palette.muted} variant="body">
-              Claims, matches and handoffs in one place.
-            </AppText>
           </View>
           {unread ? (
             <View style={styles.unreadPill}>
@@ -76,12 +73,8 @@ export default function ActivityScreen() {
           ))}
         </View>
 
-        <Surface padding="lg" style={styles.timeline}>
-          <SectionHeading
-            description="Tap an update to open the related report."
-            level={3}
-            title="Latest updates"
-          />
+        <Surface padding="lg" tone="strong" style={styles.timeline}>
+          <SectionHeading level={3} title="Updates" />
           {filteredActivity.length ? (
             <View>
               {filteredActivity.map((entry, index) => {
@@ -109,14 +102,13 @@ export default function ActivityScreen() {
               })}
             </View>
           ) : (
-            <EmptyState message="New updates will appear here." title="Nothing in this view" />
+            <EmptyState title="Nothing in this view" />
           )}
         </Surface>
 
         <SectionHeading
           actionLabel="New report"
-          description="Track every report through to a safe return."
-          onAction={() => router.push('/(student)/report')}
+          onAction={() => router.push('/report-found')}
           title="My reports"
         />
         {currentUserItems.length ? (
@@ -134,8 +126,7 @@ export default function ActivityScreen() {
         ) : (
           <EmptyState
             actionLabel="Create report"
-            message="Lost and found reports you create will appear here."
-            onAction={() => router.push('/(student)/report')}
+            onAction={() => router.push('/report-found')}
             title="No reports yet"
           />
         )}

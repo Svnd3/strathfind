@@ -5,6 +5,6 @@
   <g shape-rendering="geometricPrecision">
     <circle cx="440" cy="420" r="180" fill="#000000"/>
     <path d="M552 532 720 700" fill="none" stroke="#000000" stroke-width="90" stroke-linecap="round"/>
-    <circle cx="440" cy="420" r="120" fill="#FFFF2E"/>
+    <circle cx="440" cy="420" r="120" fill="#F2C45E"/>
   </g>
 </svg>
