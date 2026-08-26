@@ -12,7 +12,7 @@ StrathFind is a Strathmore University lost-and-found app for web, iOS, and Andro
 - Anonymous-safe public feed that omits identities, contact details, verification answers, claims, and private photo paths
 - Optional Google Places suggestions restricted to the area around Strathmore's main campus
 
-There are no sample reports, fake users, or demo credentials in the app. With no Supabase environment variables, the public feeds remain empty and authentication/publishing fail closed.
+The hosted preview includes five clearly labelled `DEMO` cards for checking the public LOST and FOUND layouts. They contain no user accounts, contacts, credentials, claims, or private photos and can be disabled as documented in [supabase/README.md](supabase/README.md). With no Supabase environment variables, authentication and publishing fail closed.
 
 ## Run locally
 

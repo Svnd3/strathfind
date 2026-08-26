@@ -15,6 +15,26 @@ supabase db reset
 
 For a linked project, review all migrations and use the normal `supabase db push` release process. Never place a service-role key in a browser or mobile bundle.
 
+## Temporary UI preview cards
+
+Migration `202608260003_demo_item_preview.sql` adds five clearly marked,
+non-operational cards so the empty-state LOST and FOUND layouts can be reviewed.
+The cards live in a locked private table and contain no account, contact,
+claim, verification-answer, or photo data. The app displays them only during
+signed-out public browsing; they are not operational reports.
+
+Hide the preview batch without deleting it:
+
+```sql
+update private.demo_item_cards
+set active = false
+where batch_key = 'strathfind-demo-v1';
+```
+
+Set `active = true` to restore it. When real reports are ready, add a new
+migration that disables or removes this batch; never rewrite an applied
+migration.
+
 ## Signup contract
 
 Self-service signup requires these exact Auth metadata keys:
@@ -79,7 +99,12 @@ with campus as (
     'Student Centre, Ground Floor',
     '+254700000000'
   )
-  on conflict (slug) do update set name = excluded.name
+  on conflict (slug) do update
+  set name = excluded.name,
+      lost_found_name = excluded.lost_found_name,
+      lost_found_location = excluded.lost_found_location,
+      lost_found_phone_e164 = excluded.lost_found_phone_e164,
+      active = true
   returning id
 )
 insert into public.university_join_codes (

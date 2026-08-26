@@ -644,8 +644,24 @@ select pg_temp.assert_true(
 set local role anon;
 
 select pg_temp.assert_true(
-  (select count(*) = 2 from public.get_public_item_cards(null, null, null, 100)),
+  (
+    select count(*) = 2
+    from public.get_public_item_cards(null, null, null, 100)
+    where title not like 'DEMO · %'
+  ),
   'anonymous feed returns active Strathmore reports'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 2
+    from public.get_public_item_cards('lost', null, 'DEMO', 100)
+  )
+  and (
+    select count(*) = 3
+    from public.get_public_item_cards('found', null, 'DEMO', 100)
+  ),
+  'anonymous feed returns two lost and three found preview cards'
 );
 
 select pg_temp.assert_true(
