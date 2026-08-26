@@ -34,7 +34,7 @@ npm run ios
 
 ## Connect Supabase
 
-1. Create a Supabase project and copy its project URL and publishable anon key into `.env.local`. Never put a service-role key in an `EXPO_PUBLIC_*` variable.
+1. Create a Supabase project and copy its project URL and publishable key into `.env.local` as `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. This is an Expo app, so values shown as `NEXT_PUBLIC_*` in Next.js examples must use the `EXPO_PUBLIC_*` prefix here. Never put a service-role key in an `EXPO_PUBLIC_*` variable.
 2. Install the Supabase CLI, link the project, and review then apply every file in `supabase/migrations` in timestamp order.
 3. Create the real university record with the exact slug `strathmore-university`, then create active student join codes from a trusted SQL session. Production examples are in [supabase/README.md](supabase/README.md).
 4. Add the deployed web callback (`https://your-domain/auth-callback`) and native callback (`strathfind:///auth-callback`) to the Supabase Auth redirect allow list.
@@ -86,6 +86,8 @@ npx eas-cli build --platform all --profile production
 - No application can honestly be called “unhackable.” Before launch, run a security review and database regression suite, configure Auth CAPTCHA/rate limits and email delivery, set retention/moderation procedures, and obtain Kenyan legal review of the in-app Terms and Privacy notice.
 
 See [supabase/README.md](supabase/README.md) for the full database contract, bootstrap process, and security tests.
+
+`@supabase/ssr` is installed for a future server-rendered companion. The current Expo web/mobile client intentionally uses `@supabase/supabase-js` with platform-appropriate session storage; do not import the SSR client into the native bundle.
 
 ## Structure
 
