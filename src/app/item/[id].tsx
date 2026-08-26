@@ -31,11 +31,13 @@ import {
   TextButton,
   getCategoryLabel,
 } from '@/components/strathfind';
-import { palette, radius, spacing } from '@/constants/design';
+import { radius, spacing } from '@/constants/design';
 import { handoffLabel } from '@/lib/item-utils';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
 export default function ItemDetailScreen() {
+  const { colors } = useAppTheme();
   const params = useLocalSearchParams<{ id: string; created?: string }>();
   const { width } = useWindowDimensions();
   const wide = width >= 820;
@@ -177,15 +179,25 @@ export default function ItemDetailScreen() {
         </View>
 
         {params.created === '1' ? (
-          <Surface padding="md" tone="inset" style={styles.createdBanner}>
-            <CheckCircle2 color={palette.success} size={22} />
-            <AppText color={palette.success} variant="bodyStrong">Report published</AppText>
+          <Surface
+            padding="md"
+            tone="inset"
+            style={[styles.createdBanner, { borderColor: colors.success }]}
+          >
+            <CheckCircle2 color={colors.success} size={22} />
+            <AppText color={colors.success} variant="bodyStrong">Report published</AppText>
           </Surface>
         ) : null}
 
         <View style={[styles.detailGrid, wide && styles.detailGridWide]}>
           <View style={styles.visualColumn}>
-            <View style={[styles.visual, wide && styles.visualWide]}>
+            <View
+              style={[
+                styles.visual,
+                { backgroundColor: colors.inset },
+                wide && styles.visualWide,
+              ]}
+            >
               {item.imageUri ? (
                 <Image accessibilityLabel={`Photo of ${item.title}`} contentFit="cover" source={{ uri: item.imageUri }} style={StyleSheet.absoluteFill} />
               ) : (
@@ -200,9 +212,9 @@ export default function ItemDetailScreen() {
 
           <View style={styles.copyColumn}>
             <View style={styles.titleBlock}>
-              <AppText color={palette.wine} variant="micro">{getCategoryLabel(item.category).toUpperCase()}</AppText>
+              <AppText color={colors.wine} variant="micro">{getCategoryLabel(item.category).toUpperCase()}</AppText>
               <AppText accessibilityRole="header" variant="h1">{item.title}</AppText>
-              <AppText color={palette.inkSoft} variant="body">{item.description}</AppText>
+              <AppText color={colors.inkSoft} variant="body">{item.description}</AppText>
             </View>
 
             <View style={styles.metaGrid}>
@@ -212,21 +224,21 @@ export default function ItemDetailScreen() {
 
             {item.kind === 'found' ? (
               <Surface padding="md" tone={item.status === 'handoff_due' ? 'strong' : 'inset'} style={styles.handoffBox}>
-                <Building2 color={item.status === 'handoff_due' ? palette.danger : palette.wine} size={23} />
+                <Building2 color={item.status === 'handoff_due' ? colors.danger : colors.wine} size={23} />
                 <View style={{ flex: 1, gap: spacing.xxs }}>
-                  <AppText color={item.status === 'handoff_due' ? palette.danger : palette.ink} variant="bodyStrong">
+                  <AppText color={item.status === 'handoff_due' ? colors.danger : colors.ink} variant="bodyStrong">
                     {item.status === 'at_office' ? 'At the campus desk' : '24-hour handoff'}
                   </AppText>
-                  <AppText color={palette.muted} variant="support">
+                  <AppText color={colors.muted} variant="support">
                     {item.status === 'at_office'
                       ? item.handoffPoint ?? 'Lost and found desk'
                       : `Then: ${item.handoffPoint ?? 'lost and found desk'}`}
                   </AppText>
                   {handoffCode ? (
-                    <View style={styles.handoffCode}>
-                      <AppText color={palette.muted} variant="micro">STAFF HANDOFF CODE</AppText>
-                      <AppText selectable style={styles.codeText} variant="h2">{handoffCode}</AppText>
-                      <AppText color={palette.muted} variant="support">Show staff after handoff.</AppText>
+                    <View style={[styles.handoffCode, { borderTopColor: colors.lineSoft }]}>
+                      <AppText color={colors.muted} variant="micro">STAFF HANDOFF CODE</AppText>
+                      <AppText selectable color={colors.wine} style={styles.codeText} variant="h2">{handoffCode}</AppText>
+                      <AppText color={colors.muted} variant="support">Show staff after handoff.</AppText>
                     </View>
                   ) : canIssueHandoffCode ? (
                     <SecondaryButton
@@ -244,36 +256,36 @@ export default function ItemDetailScreen() {
 
             <Surface padding="lg" tone="strong" style={styles.contactCard}>
               <View style={styles.contactHeading}>
-                <View style={styles.holderAvatar}>
-                  <AppText color={palette.yellow} variant="bodyStrong">{item.holderName.slice(0, 1)}</AppText>
+                <View style={[styles.holderAvatar, { backgroundColor: colors.primary }]}>
+                  <AppText color={colors.onPrimary} variant="bodyStrong">{item.holderName.slice(0, 1)}</AppText>
                 </View>
                 <View style={{ flex: 1 }}>
                   <AppText variant="bodyStrong">{item.status === 'at_office' ? 'Campus Lost & Found' : item.holderName}</AppText>
                   <View style={styles.verifiedLine}>
-                    <ShieldCheck color={palette.success} size={15} />
-                    <AppText color={palette.success} variant="support">Verified campus contact</AppText>
+                    <ShieldCheck color={colors.success} size={15} />
+                    <AppText color={colors.success} variant="support">Verified campus contact</AppText>
                   </View>
                 </View>
               </View>
 
-              <View style={styles.maskedRow}>
-                <Phone color={palette.wine} size={20} />
+              <View style={[styles.maskedRow, { backgroundColor: colors.inset }]}>
+                <Phone color={colors.wine} size={20} />
                 <AppText variant="bodyStrong">{contact ?? item.maskedPhone}</AppText>
-                {!contact ? <LockKeyhole color={palette.muted} size={17} /> : null}
+                {!contact ? <LockKeyhole color={colors.muted} size={17} /> : null}
               </View>
 
               {isAdmin ? (
-                <AppText color={palette.muted} variant="support">Audited access</AppText>
+                <AppText color={colors.muted} variant="support">Audited access</AppText>
               ) : ownsReport ? (
-                <AppText color={palette.muted} variant="support">Hidden until you approve a claim.</AppText>
+                <AppText color={colors.muted} variant="support">Hidden until you approve a claim.</AppText>
               ) : claimAccepted ? (
-                <AppText color={palette.muted} variant="support">Claim approved</AppText>
+                <AppText color={colors.muted} variant="support">Claim approved</AppText>
               ) : myClaim?.status === 'pending' ? (
-                <AppText color={palette.muted} variant="support">Waiting for approval</AppText>
+                <AppText color={colors.muted} variant="support">Waiting for approval</AppText>
               ) : myClaim?.status === 'declined' ? (
-                <AppText color={palette.muted} variant="support">Add a clearer private detail.</AppText>
+                <AppText color={colors.muted} variant="support">Add a clearer private detail.</AppText>
               ) : (
-                <AppText color={palette.muted} variant="support">Unlocks after claim approval.</AppText>
+                <AppText color={colors.muted} variant="support">Unlocks after claim approval.</AppText>
               )}
 
               {contact ? (
@@ -295,16 +307,19 @@ export default function ItemDetailScreen() {
                   <AppText variant="h3">Ownership checks</AppText>
                 </View>
                 {managedClaims.map((claim) => (
-                  <View key={claim.id} style={styles.reviewClaim}>
+                  <View
+                    key={claim.id}
+                    style={[styles.reviewClaim, { borderTopColor: colors.lineSoft }]}
+                  >
                     <View style={styles.reviewClaimHeading}>
                       <View style={{ flex: 1 }}>
                         <AppText variant="bodyStrong">{claim.claimantName ?? 'Verified student'}</AppText>
-                        <AppText color={palette.muted} variant="micro">{new Date(claim.createdAt).toLocaleString()}</AppText>
+                        <AppText color={colors.muted} variant="micro">{new Date(claim.createdAt).toLocaleString()}</AppText>
                       </View>
                       <StatusPill label={claim.status} tone={claim.status === 'accepted' ? 'success' : claim.status === 'declined' ? 'danger' : 'warning'} />
                     </View>
                     <Surface padding="md" tone="inset">
-                      <AppText color={palette.muted} variant="micro">PRIVATE ANSWER</AppText>
+                      <AppText color={colors.muted} variant="micro">PRIVATE ANSWER</AppText>
                       <AppText variant="support">{claim.note}</AppText>
                     </Surface>
                     {claim.status === 'pending' ? (
@@ -316,10 +331,10 @@ export default function ItemDetailScreen() {
                   </View>
                 ))}
                 {canConfirmDirectReturn ? (
-                  <View style={styles.returnBox}>
+                  <View style={[styles.returnBox, { borderTopColor: colors.lineSoft }]}>
                     <View style={{ flex: 1, gap: spacing.xxs }}>
                       <AppText variant="bodyStrong">Complete the handover</AppText>
-                      <AppText color={palette.muted} variant="support">Confirm after the item changes hands.</AppText>
+                      <AppText color={colors.muted} variant="support">Confirm after the item changes hands.</AppText>
                     </View>
                     {returnConfirm ? (
                       <View style={styles.claimActions}>
@@ -344,7 +359,7 @@ export default function ItemDetailScreen() {
               <Surface padding="lg" tone="strong" style={styles.claimBox}>
                 <View style={styles.stepHeading}>
                   <AppText variant="h3">Verify before contact</AppText>
-                  <AppText color={palette.muted} variant="support">{item.privateClue ?? 'Share one detail only the owner would know.'}</AppText>
+                  <AppText color={colors.muted} variant="support">{item.privateClue ?? 'Share one detail only the owner would know.'}</AppText>
                 </View>
                 <TextArea
                   autoFocus
@@ -360,11 +375,11 @@ export default function ItemDetailScreen() {
               </Surface>
             ) : null}
 
-            {error ? <AppText accessibilityLiveRegion="polite" color={palette.danger} variant="support">{error}</AppText> : null}
+            {error ? <AppText accessibilityLiveRegion="polite" color={colors.danger} variant="support">{error}</AppText> : null}
           </View>
         </View>
 
-        <View style={styles.safetyFooter}>
+        <View style={[styles.safetyFooter, { borderTopColor: colors.lineSoft }]}>
           <AppText style={{ flex: 1 }} variant="bodyStrong">Meet in a staffed public place.</AppText>
           <SecondaryButton
             disabled={flaggedItemIds.includes(item.id)}
@@ -399,14 +414,21 @@ export default function ItemDetailScreen() {
 }
 
 function Meta({ icon: Icon, label, value, urgent = false }: { icon: typeof MapPin; label: string; value: string; urgent?: boolean }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.meta}>
-      <View style={[styles.metaIcon, urgent && styles.metaIconUrgent]}>
-        <Icon color={urgent ? palette.danger : palette.wine} size={20} />
+      <View
+        style={[
+          styles.metaIcon,
+          { backgroundColor: urgent ? colors.dangerSoft : colors.wineSoft },
+        ]}
+      >
+        <Icon color={urgent ? colors.danger : colors.wine} size={20} />
       </View>
       <View style={{ flex: 1 }}>
-        <AppText color={palette.muted} variant="micro">{label.toUpperCase()}</AppText>
-        <AppText color={urgent ? palette.danger : palette.ink} variant="support">{value}</AppText>
+        <AppText color={colors.muted} variant="micro">{label.toUpperCase()}</AppText>
+        <AppText color={urgent ? colors.danger : colors.ink} variant="support">{value}</AppText>
       </View>
     </View>
   );
@@ -416,34 +438,33 @@ const styles = StyleSheet.create({
   shell: { gap: spacing.lg, paddingTop: spacing.md },
   topbar: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   topbarAction: { alignSelf: 'center' },
-  createdBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderColor: palette.success },
+  createdBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   detailGrid: { gap: spacing.xl },
   detailGridWide: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xxl },
   visualColumn: { flex: 0.85, gap: spacing.md },
-  visual: { height: 300, overflow: 'hidden', borderRadius: radius.xl, backgroundColor: palette.inset },
+  visual: { height: 300, overflow: 'hidden', borderRadius: radius.xl },
   visualWide: { height: 440 },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   copyColumn: { flex: 1, gap: spacing.lg },
   titleBlock: { gap: spacing.sm },
   metaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   meta: { minWidth: 220, flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  metaIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: palette.wineSoft },
-  metaIconUrgent: { backgroundColor: palette.dangerSoft },
+  metaIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   handoffBox: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  handoffCode: { gap: spacing.xxs, marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: palette.lineSoft },
+  handoffCode: { gap: spacing.xxs, marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1 },
   handoffAction: { marginTop: spacing.sm },
-  codeText: { color: palette.wine, letterSpacing: 3 },
+  codeText: { letterSpacing: 3 },
   contactCard: { gap: spacing.md },
   contactHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  holderAvatar: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: palette.wine },
+  holderAvatar: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill },
   verifiedLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
-  maskedRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: palette.inset },
+  maskedRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md },
   claimBox: { gap: spacing.md },
   stepHeading: { gap: spacing.xs },
   claimActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
-  reviewClaim: { gap: spacing.sm, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: palette.lineSoft },
-  returnBox: { gap: spacing.sm, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: palette.lineSoft },
+  reviewClaim: { gap: spacing.sm, paddingTop: spacing.md, borderTopWidth: 1 },
+  returnBox: { gap: spacing.sm, paddingTop: spacing.md, borderTopWidth: 1 },
   reviewClaimHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  safetyFooter: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: palette.lineSoft },
+  safetyFooter: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg, borderTopWidth: 1 },
   flagBox: { gap: spacing.md, marginBottom: spacing.lg },
 });

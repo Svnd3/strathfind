@@ -2,21 +2,25 @@ import { CheckCircle2, CircleAlert, Info, TriangleAlert, X } from 'lucide-react-
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/strathfind';
-import { palette, radius, raisedShadow, spacing } from '@/constants/design';
+import { radius, raisedShadow, spacing, type AppPalette } from '@/constants/design';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
-const toneStyles = {
-  success: { background: palette.success, icon: CheckCircle2 },
-  warning: { background: palette.warning, icon: TriangleAlert },
-  error: { background: palette.danger, icon: CircleAlert },
-  info: { background: palette.ink, icon: Info },
-};
+function getToneStyles(colors: AppPalette) {
+  return {
+    success: { background: colors.success, foreground: colors.onSuccess, icon: CheckCircle2 },
+    warning: { background: colors.warning, foreground: colors.onWarning, icon: TriangleAlert },
+    error: { background: colors.danger, foreground: colors.onDanger, icon: CircleAlert },
+    info: { background: colors.blue, foreground: colors.onInfo, icon: Info },
+  };
+}
 
 export function AppToast() {
+  const { colors } = useAppTheme();
   const { toast, dismissToast } = useAppState();
   if (!toast) return null;
 
-  const config = toneStyles[toast.tone];
+  const config = getToneStyles(colors)[toast.tone];
   const Icon = config.icon;
 
   return (
@@ -24,10 +28,10 @@ export function AppToast() {
       <View
         accessibilityLiveRegion="polite"
         accessibilityRole="alert"
-        style={[styles.toast, { backgroundColor: config.background }]}
+        style={[styles.toast, { backgroundColor: config.background, ...raisedShadow('md', colors.black) }]}
       >
-        <Icon color={palette.white} size={20} />
-        <AppText color={palette.white} variant="support" style={styles.message}>
+        <Icon color={config.foreground} size={20} />
+        <AppText color={config.foreground} variant="support" style={styles.message}>
           {toast.message}
         </AppText>
         <Pressable
@@ -37,7 +41,7 @@ export function AppToast() {
           onPress={dismissToast}
           style={styles.close}
         >
-          <X color={palette.white} size={18} />
+          <X color={config.foreground} size={18} />
         </Pressable>
       </View>
     </View>
@@ -65,7 +69,6 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.xs,
     borderRadius: radius.md,
-    ...raisedShadow('md'),
   },
   message: { flex: 1 },
   close: {

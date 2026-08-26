@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
-import { layout, palette, spacing } from '@/constants/design';
+import { layout, spacing } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 export interface ContentShellProps {
   maxWidth?: number;
@@ -52,20 +53,23 @@ export function Screen({
   scrollable = true,
   edges = ['top', 'left', 'right'],
   contentContainerStyle,
-  backgroundColor = palette.canvas,
+  backgroundColor,
   children,
   ...scrollProps
 }: PropsWithChildren<ScreenProps>) {
+  const { colors } = useAppTheme();
+  const resolvedBackground = backgroundColor ?? colors.canvas;
+
   if (!scrollable) {
     return (
-      <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor }}>
+      <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: resolvedBackground }}>
         <View nativeID="main-content" role="main" style={[{ flex: 1 }, contentContainerStyle]}>{children}</View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor }}>
+    <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: resolvedBackground }}>
       <ScrollView
         keyboardShouldPersistTaps="handled"
         nativeID="main-content"

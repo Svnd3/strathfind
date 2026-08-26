@@ -11,9 +11,10 @@ import {
   Screen,
   Surface,
 } from '@/components/strathfind';
-import { layout, palette, spacing } from '@/constants/design';
+import { layout, spacing, type AppPalette } from '@/constants/design';
 import { supabase } from '@/lib/supabase';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
 type CallbackResult = { ok: true; userId: string } | { ok: false; message: string };
 
@@ -47,6 +48,8 @@ export default function AuthCallbackScreen() {
     error_description?: string | string[];
   }>();
   const { loading, user } = useAppState();
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const code = firstParam(params.code);
   const callbackError = firstParam(params.error) ?? firstParam(params.error_description);
   const [result, setResult] = useState<CallbackResult | null>(null);
@@ -94,7 +97,7 @@ export default function AuthCallbackScreen() {
         <Surface padding="lg" style={styles.card}>
           <View style={styles.copy}>
             <AppText accessibilityRole="header" variant="h2">Link not completed</AppText>
-            <AppText accessibilityLiveRegion="polite" color={palette.muted} variant="body">
+            <AppText accessibilityLiveRegion="polite" color={colors.muted} variant="body">
               {message}
             </AppText>
           </View>
@@ -105,16 +108,19 @@ export default function AuthCallbackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  shell: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: spacing.lg,
-  },
-  card: {
-    gap: spacing.lg,
-  },
-  copy: {
-    gap: spacing.sm,
-  },
-});
+function createStyles(colors: AppPalette) {
+  return StyleSheet.create({
+    shell: {
+      flex: 1,
+      justifyContent: 'center',
+      gap: spacing.lg,
+      backgroundColor: colors.canvas,
+    },
+    card: {
+      gap: spacing.lg,
+    },
+    copy: {
+      gap: spacing.sm,
+    },
+  });
+}

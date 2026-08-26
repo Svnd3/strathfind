@@ -82,6 +82,7 @@ npx eas-cli build --platform all --profile production
 - Full contact access is authorized, rate-limited, and audited: normally after an approved claim, with narrow report-author and campus-admin exceptions.
 - Item media stays in private Storage and is served with short-lived signed URLs after authorization.
 - Public signup always creates a student. Admin roles and join codes are managed only through trusted operations.
+- Student and Admin are separate sign-in portals. The portal choice never grants authority: the app verifies the protected database profile after authentication and signs out any role mismatch.
 - No application can honestly be called “unhackable.” Before launch, run a security review and database regression suite, configure Auth CAPTCHA/rate limits and email delivery, set retention/moderation procedures, and obtain Kenyan legal review of the in-app Terms and Privacy notice.
 
 See [supabase/README.md](supabase/README.md) for the full database contract, bootstrap process, and security tests.

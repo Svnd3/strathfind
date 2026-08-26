@@ -1,5 +1,6 @@
 import type { SupabaseClient, User as SupabaseUser } from '@supabase/supabase-js';
 
+import { trustedProfileRole } from '@/lib/auth-access';
 import type {
   CampusUser,
   Claim,
@@ -174,7 +175,7 @@ export async function fetchCampusUser(
     name: textValue(profile.display_name, textValue(metadata.display_name, 'Student')),
     email: authUser.email ?? '',
     phone: textValue(contactResult.data?.phone_e164, textValue(metadata.phone_e164, authUser.phone ?? '')),
-    role: profile.role === 'admin' ? 'admin' : 'student',
+    role: trustedProfileRole(profile.role),
     university: textValue(universityResult.data?.name, 'University'),
     universityId,
     campusId: textValue(profile.student_number),

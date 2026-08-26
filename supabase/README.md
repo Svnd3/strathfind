@@ -47,6 +47,8 @@ await supabase.auth.signUp({
 
 The student number is unique within a university, but may exist at another university. The Auth trigger atomically redeems the join code, always assigns the `student` role, and removes the one-time signup fields (including profile PII, join code, legal flags, and authority-like values) from Auth metadata after copying the required values into protected tables. A client cannot self-assign admin access.
 
+The Student/Admin choice on the sign-in screen is only a portal selection. After password authentication, the client reads `role` through `get_my_profile()` and rejects the session when that trusted role does not match the selected portal. Admin accounts must still be provisioned or promoted through the authorised database/admin workflow below.
+
 Signup also writes server-timestamped, append-only rows to `account_legal_acknowledgements`. Auth metadata is only the transport for the explicit signup action and is removed after the profile is created. When the legal text changes, update both constants in `src/lib/legal.ts` and the version checks in a new migration; do not edit an already-applied migration.
 
 Read the signed-in user's private identifier through `get_my_profile()`:

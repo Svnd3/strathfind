@@ -3,11 +3,12 @@ import { Filter, PackageOpen, Plus, Search, X } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { palette, radius, raisedShadow, spacing } from '@/constants/design';
+import { radius, raisedShadow, spacing } from '@/constants/design';
 import { filterItems } from '@/lib/item-utils';
 import { categories } from '@/lib/catalog';
 import type { ItemCategory, ItemKind } from '@/lib/types';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
 import { BrandLockup } from './brand';
 import { IconButton, PrimaryButton, SecondaryButton } from './buttons';
@@ -22,6 +23,7 @@ import { getCategoryLabel } from './category-art';
 type CategoryFilter = 'all' | ItemCategory;
 
 export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
+  const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const { isAuthenticated, items } = useAppState();
   const [query, setQuery] = useState('');
@@ -58,11 +60,11 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
         <View style={styles.heading}>
           <View style={{ flex: 1, minWidth: 0, gap: spacing.xxs }}>
             <AppText accessibilityRole="header" variant="h1">{title}</AppText>
-            <AppText color={palette.muted} variant="support">
+            <AppText color={colors.muted} variant="support">
               {kind === 'lost' ? 'Items people are looking for.' : 'Items waiting to get home.'}
             </AppText>
           </View>
-          <AppText color={palette.muted} variant="support">
+          <AppText color={colors.muted} variant="support">
             {filtered.length} {filtered.length === 1 ? 'report' : 'reports'}
           </AppText>
         </View>
@@ -72,7 +74,7 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
             accessibilityHint="Search titles, colours, and campus locations"
             containerStyle={styles.search}
             label="Search"
-            leading={<Search aria-hidden color={palette.muted} size={20} />}
+            leading={<Search aria-hidden color={colors.muted} size={20} />}
             onChangeText={setQuery}
             placeholder="Item or place"
             returnKeyType="search"
@@ -117,14 +119,20 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
       </ContentShell>
 
       <Modal animationType="fade" onRequestClose={() => setFiltersOpen(false)} transparent visible={filtersOpen}>
-        <View style={styles.modalRoot}>
+        <View style={[styles.modalRoot, { backgroundColor: colors.scrim }]}>
           <Pressable
             accessibilityLabel="Close filters"
             accessibilityRole="button"
             onPress={() => setFiltersOpen(false)}
             style={StyleSheet.absoluteFill}
           />
-          <View accessibilityViewIsModal style={styles.filterSheet}>
+          <View
+            accessibilityViewIsModal
+            style={[
+              styles.filterSheet,
+              { backgroundColor: colors.surfaceStrong, ...raisedShadow('lg', colors.black) },
+            ]}
+          >
             <View style={styles.filterHeading}>
               <AppText accessibilityRole="header" variant="h3">Category</AppText>
               <IconButton accessibilityLabel="Close filters" icon={X} onPress={() => setFiltersOpen(false)} />
@@ -168,7 +176,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     padding: spacing.md,
-    backgroundColor: 'rgba(36,27,30,0.58)',
   },
   filterSheet: {
     width: '100%',
@@ -176,8 +183,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     padding: spacing.lg,
     borderRadius: radius.xl,
-    backgroundColor: palette.surfaceStrong,
-    ...raisedShadow('lg'),
   },
   filterHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },

@@ -8,7 +8,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta name="theme-color" content="#711C3A" />
+        <meta name="theme-color" content="#FA1747" />
         <meta
           name="description"
           content="StrathFind is a private, campus-verified lost-and-found for students."
@@ -27,7 +27,7 @@ export default function Root({ children }: PropsWithChildren) {
 }
 
 const responsiveBackground = `
-body { background: #F6F1EA; }
+body { background: var(--canvas, #F7F4F1); }
 #root { display: flex; min-height: 100vh; }
 .skip-link {
   position: fixed;
@@ -37,8 +37,8 @@ body { background: #F6F1EA; }
   transform: translateY(-160%);
   padding: 12px 16px;
   border-radius: 10px;
-  color: #FFFDFC;
-  background: #711C3A;
+  color: #FFF9FA;
+  background: var(--primary, #C3133A);
   font: 600 16px/1.25 system-ui, sans-serif;
 }
 .skip-link:focus { transform: translateY(0); }

@@ -1,7 +1,8 @@
 import type { PropsWithChildren } from 'react';
 import { View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 
-import { palette, radius, raisedShadow, spacing } from '@/constants/design';
+import { radius, raisedShadow, spacing } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 export type SurfaceTone = 'raised' | 'flat' | 'inset' | 'strong';
 
@@ -20,19 +21,20 @@ export function Surface({
   children,
   ...props
 }: PropsWithChildren<SurfaceProps>) {
+  const { colors } = useAppTheme();
   const paddingValue = typeof padding === 'number' ? padding : spacing[padding];
   const toneStyle: ViewStyle =
     tone === 'inset'
-      ? { backgroundColor: palette.inset, borderColor: palette.lineSoft, borderWidth: 1 }
+      ? { backgroundColor: colors.inset, borderColor: colors.lineSoft, borderWidth: 1 }
       : tone === 'strong'
-        ? { backgroundColor: palette.surfaceStrong, borderColor: palette.lineSoft, borderWidth: 1 }
+        ? { backgroundColor: colors.surfaceStrong, borderColor: colors.lineSoft, borderWidth: 1 }
         : tone === 'flat'
-          ? { backgroundColor: palette.surface, borderColor: palette.lineSoft, borderWidth: 1 }
+          ? { backgroundColor: colors.surface, borderColor: colors.lineSoft, borderWidth: 1 }
           : {
-              backgroundColor: palette.surface,
-              borderColor: 'rgba(255,255,255,0.62)',
+              backgroundColor: colors.surface,
+              borderColor: colors.lineSoft,
               borderWidth: 1,
-              ...raisedShadow('sm'),
+              ...raisedShadow('sm', colors.black),
             };
 
   return (

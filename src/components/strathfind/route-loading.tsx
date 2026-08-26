@@ -1,21 +1,24 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { palette, spacing } from '@/constants/design';
+import { spacing } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 import { Screen } from './layout';
 import { AppText } from './typography';
 
 export function RouteLoadingScreen({ label = 'Checking access' }: { label?: string }) {
+  const { colors } = useAppTheme();
+
   return (
     <Screen
-      backgroundColor={palette.canvas}
+      backgroundColor={colors.canvas}
       contentContainerStyle={styles.screen}
       edges={['top', 'right', 'bottom', 'left']}
       scrollable={false}
     >
       <View accessibilityLiveRegion="polite" style={styles.status}>
-        <ActivityIndicator accessibilityLabel={label} color={palette.wine} size="small" />
-        <AppText color={palette.muted} variant="support">{label}</AppText>
+        <ActivityIndicator accessibilityLabel={label} color={colors.wine} size="small" />
+        <AppText color={colors.muted} variant="support">{label}</AppText>
       </View>
     </Screen>
   );

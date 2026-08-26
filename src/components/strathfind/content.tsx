@@ -2,7 +2,8 @@ import type { ComponentType, ReactNode } from 'react';
 import { useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SearchX, type LucideProps } from 'lucide-react-native';
 
-import { layout, palette, radius, spacing } from '@/constants/design';
+import { layout, radius, spacing } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 import type { ButtonProps } from './buttons';
 import { PrimaryButton, TextButton } from './buttons';
@@ -25,6 +26,8 @@ export function EmptyState({
   onAction,
   style,
 }: EmptyStateProps) {
+  const { colors } = useAppTheme();
+
   return (
     <View
       accessibilityRole="summary"
@@ -48,17 +51,17 @@ export function EmptyState({
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: radius.pill,
-          backgroundColor: palette.wineSoft,
+          backgroundColor: colors.wineSoft,
         }}
       >
-        <Icon aria-hidden color={palette.wine} size={32} strokeWidth={1.8} />
+        <Icon aria-hidden color={colors.wine} size={32} strokeWidth={1.8} />
       </View>
       <View style={{ alignItems: 'center', gap: spacing.xs }}>
         <AppText variant="h3" align="center">
           {title}
         </AppText>
         {message ? (
-          <AppText variant="body" color={palette.muted} align="center">
+          <AppText variant="body" color={colors.muted} align="center">
             {message}
           </AppText>
         ) : null}
@@ -93,6 +96,7 @@ export function SectionHeading({
   level = 2,
   style,
 }: SectionHeadingProps) {
+  const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const variant = level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3';
   const hasAction = Boolean(trailing || (actionLabel && onAction));
@@ -113,7 +117,7 @@ export function SectionHeading({
     >
       <View style={{ flex: 1, minWidth: 0, maxWidth: layout.readingMax, gap: spacing.xs }}>
         {eyebrow ? (
-          <AppText variant="micro" color={palette.wine}>
+          <AppText variant="micro" color={colors.wine}>
             {eyebrow.toUpperCase()}
           </AppText>
         ) : null}
@@ -121,7 +125,7 @@ export function SectionHeading({
           {title}
         </AppText>
         {description ? (
-          <AppText variant="body" color={palette.muted}>
+          <AppText variant="body" color={colors.muted}>
             {description}
           </AppText>
         ) : null}

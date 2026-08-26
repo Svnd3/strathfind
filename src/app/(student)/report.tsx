@@ -21,12 +21,13 @@ import {
   TextField,
   getCategoryLabel,
 } from '@/components/strathfind';
-import { palette, radius, spacing } from '@/constants/design';
+import { radius, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
 import { categories, handoffPoints } from '@/lib/catalog';
 import { readPreference, writePreference } from '@/lib/preferences';
 import type { ItemCategory, ItemKind, ReportDraft } from '@/lib/types';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
 type TimeChoice = 'now' | 'earlier' | 'yesterday' | 'custom';
 const PENDING_REPORT_KEY = 'strathfind.pending-report.v1';
@@ -70,6 +71,7 @@ function quickTime(choice: Exclude<TimeChoice, 'custom'>) {
 }
 
 export default function ReportScreen() {
+  const { colors } = useAppTheme();
   const params = useLocalSearchParams<{ kind?: string; restore?: string }>();
   const { width } = useWindowDimensions();
   const compact = width < 700;
@@ -241,18 +243,31 @@ export default function ReportScreen() {
           accessibilityValue={{ min: 1, max: 3, now: step + 1, text: stepLabels[step] }}
           style={styles.progressBlock}
         >
-          <AppText color={palette.muted} variant="micro">
+          <AppText color={colors.muted} variant="micro">
             STEP {step + 1} OF 3 · {stepLabels[step].toUpperCase()}
           </AppText>
           <View style={styles.progress}>
           {progress.map((active, index) => (
             <View key={index} style={styles.progressGroup}>
-              <View style={[styles.stepDot, active && styles.stepDotActive]}>
+              <View
+                style={[
+                  styles.stepDot,
+                  { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
+                  active && { backgroundColor: colors.primary, borderColor: colors.primary },
+                ]}
+              >
                 {index < step
-                  ? <Check color={palette.white} size={15} strokeWidth={3} />
-                  : <AppText color={active ? palette.white : palette.muted} variant="micro">{index + 1}</AppText>}
+                  ? <Check color={colors.onPrimary} size={15} strokeWidth={3} />
+                  : <AppText color={active ? colors.onPrimary : colors.muted} variant="micro">{index + 1}</AppText>}
               </View>
-              {index < 2 ? <View style={[styles.progressLine, index < step && styles.progressLineActive]} /> : null}
+              {index < 2 ? (
+                <View
+                  style={[
+                    styles.progressLine,
+                    { backgroundColor: index < step ? colors.primary : colors.lineSoft },
+                  ]}
+                />
+              ) : null}
             </View>
           ))}
           </View>
@@ -275,20 +290,24 @@ export default function ReportScreen() {
                   accessibilityLabel={imageUri ? 'Change item photo' : 'Add item photo, optional'}
                   accessibilityRole="button"
                   onPress={() => void pickImage()}
-                  style={({ pressed }) => [styles.photoPreview, pressed && { opacity: 0.78 }]}
+                  style={({ pressed }) => [
+                    styles.photoPreview,
+                    { backgroundColor: colors.inset, borderColor: colors.line },
+                    pressed && { opacity: 0.78 },
+                  ]}
                 >
                   {imageUri
                     ? <Image accessibilityLabel="Selected item photo" contentFit="cover" source={{ uri: imageUri }} style={StyleSheet.absoluteFill} />
                     : (
                       <View style={styles.emptyPhoto}>
-                        <Camera aria-hidden color={palette.wine} size={30} strokeWidth={2} />
-                        <AppText color={palette.wine} variant="micro">ADD PHOTO</AppText>
+                        <Camera aria-hidden color={colors.wine} size={30} strokeWidth={2} />
+                        <AppText color={colors.wine} variant="micro">ADD PHOTO</AppText>
                       </View>
                     )}
                 </Pressable>
                 <View style={styles.photoCopy}>
                   <AppText variant="bodyStrong">Photo · optional</AppText>
-                  <AppText color={palette.muted} variant="support">Avoid faces and ID numbers.</AppText>
+                  <AppText color={colors.muted} variant="support">Avoid faces and ID numbers.</AppText>
                   <SecondaryButton icon={Camera} onPress={() => void pickImage()}>{imageUri ? 'Change photo' : 'Choose photo'}</SecondaryButton>
                 </View>
               </View>
@@ -338,7 +357,7 @@ export default function ReportScreen() {
               />
               <View style={styles.choiceGroup}>
                 <View style={styles.choiceLabel}>
-                  <Clock3 color={palette.wine} size={18} />
+                  <Clock3 color={colors.wine} size={18} />
                   <AppText variant="support">{kind === 'found' ? 'Found' : 'Last seen'}</AppText>
                 </View>
                 <View style={styles.chipWrap}>
@@ -372,10 +391,10 @@ export default function ReportScreen() {
                 />
               </View>
               <Surface padding="md" tone="inset" style={styles.privateBox}>
-                <LockKeyhole color={palette.wine} size={24} />
+                <LockKeyhole color={colors.wine} size={24} />
                 <View style={{ flex: 1, gap: spacing.xxs }}>
                   <AppText variant="bodyStrong">Private clue</AppText>
-                  <AppText color={palette.muted} variant="support">Used to verify the owner.</AppText>
+                  <AppText color={colors.muted} variant="support">Used to verify the owner.</AppText>
                 </View>
               </Surface>
               <TextArea
@@ -393,7 +412,7 @@ export default function ReportScreen() {
                       <Chip key={point} label={point} onPress={() => setHandoffPoint(point)} selected={handoffPoint === point} />
                     ))}
                   </View>
-                  <AppText color={palette.muted} variant="support">Unclaimed after 24h? Take it here.</AppText>
+                  <AppText color={colors.muted} variant="support">Unclaimed after 24h? Take it here.</AppText>
                 </View>
               ) : null}
             </View>
@@ -411,9 +430,9 @@ export default function ReportScreen() {
                   <CategoryArt category={category} size={112} />
                 ) : null}
                 <View style={styles.reviewCopy}>
-                  <AppText color={palette.muted} variant="micro">{kind.toUpperCase()} · {category ? getCategoryLabel(category).toUpperCase() : 'UNCATEGORISED'}</AppText>
+                  <AppText color={colors.muted} variant="micro">{kind.toUpperCase()} · {category ? getCategoryLabel(category).toUpperCase() : 'UNCATEGORISED'}</AppText>
                   <AppText variant="h3">{title}</AppText>
-                  <AppText color={palette.inkSoft} variant="support">{color} · {location}</AppText>
+                  <AppText color={colors.inkSoft} variant="support">{color} · {location}</AppText>
                 </View>
               </Surface>
               <View style={styles.reviewList}>
@@ -433,7 +452,7 @@ export default function ReportScreen() {
             </View>
           ) : null}
 
-          {error ? <AppText accessibilityLiveRegion="polite" color={palette.danger} variant="support">{error}</AppText> : null}
+          {error ? <AppText accessibilityLiveRegion="polite" color={colors.danger} variant="support">{error}</AppText> : null}
 
           <View style={styles.actions}>
             {step > 0 ? (
@@ -452,12 +471,16 @@ export default function ReportScreen() {
 }
 
 function ReviewRow({ icon: Icon, title, copy }: { icon: typeof Clock3; title: string; copy: string }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.reviewRow}>
-      <View style={styles.reviewIcon}><Icon color={palette.wine} size={20} /></View>
+      <View style={[styles.reviewIcon, { backgroundColor: colors.wineSoft }]}>
+        <Icon color={colors.wine} size={20} />
+      </View>
       <View style={{ flex: 1 }}>
         <AppText variant="bodyStrong">{title}</AppText>
-        <AppText color={palette.muted} variant="support">{copy}</AppText>
+        <AppText color={colors.muted} variant="support">{copy}</AppText>
       </View>
     </View>
   );
@@ -469,10 +492,8 @@ const styles = StyleSheet.create({
   progressBlock: { width: '100%', maxWidth: 420, alignSelf: 'center', gap: spacing.xs },
   progress: { flexDirection: 'row', alignItems: 'center', maxWidth: 420, alignSelf: 'center' },
   progressGroup: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  stepDot: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.surfaceStrong },
-  stepDotActive: { backgroundColor: palette.wine, borderColor: palette.wine },
-  progressLine: { flex: 1, height: 2, backgroundColor: palette.lineSoft },
-  progressLineActive: { backgroundColor: palette.wine },
+  stepDot: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1 },
+  progressLine: { flex: 1, height: 2 },
   form: { gap: spacing.lg },
   stepContent: { gap: spacing.lg },
   stepHeading: { gap: spacing.xs },
@@ -486,8 +507,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: palette.line,
-    backgroundColor: palette.inset,
   },
   emptyPhoto: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   photoCopy: { flex: 1, gap: spacing.xs },
@@ -502,6 +521,6 @@ const styles = StyleSheet.create({
   reviewCopy: { flex: 1, gap: spacing.xs },
   reviewList: { gap: spacing.sm },
   reviewRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  reviewIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: palette.wineSoft },
+  reviewIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, paddingTop: spacing.sm },
 });

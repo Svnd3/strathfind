@@ -2,9 +2,9 @@
 
 The primary mark uses only the approved StrathFind palette:
 
-- Deep wine red: `#711C3A`
-- Black: `#000000`
-- Discovery gold: `#F2C45E`
+- Signal red: `#FA1747`
+- Near black: `#111113`
+- Discovery gold: `#F4C44E`
 
 ## Files
 
@@ -13,4 +13,4 @@ The primary mark uses only the approved StrathFind palette:
 - `adaptive-foreground.svg` — transparent Android adaptive-icon foreground, composed within the safe zone.
 - `adaptive-background.svg` — solid Android adaptive-icon background layer.
 
-Keep the artwork flat. Do not add gradients, shadows, outlines around the wine background, or extra text inside the primary mark.
+Keep the artwork flat. Do not add gradients, shadows, outlines around the red background, or extra text inside the primary mark.

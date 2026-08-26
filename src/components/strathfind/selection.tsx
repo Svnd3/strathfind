@@ -8,7 +8,8 @@ import {
 } from 'react-native';
 import { Check } from 'lucide-react-native';
 
-import { focusRing, layout, palette, radius, spacing } from '@/constants/design';
+import { focusRing, layout, radius, spacing } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 import { AppText } from './typography';
 
@@ -29,6 +30,7 @@ export function Chip({
   style,
   accessibilityLabel,
 }: ChipProps) {
+  const { colors } = useAppTheme();
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
 
@@ -50,20 +52,20 @@ export function Chip({
           paddingHorizontal: spacing.md,
           borderRadius: radius.pill,
           borderWidth: 1,
-          borderColor: selected ? palette.wine : palette.lineSoft,
+          borderColor: selected ? colors.primary : colors.lineSoft,
           backgroundColor: selected
-            ? palette.wine
+            ? colors.primary
             : hovered || pressed
-              ? palette.wineSoft
-              : palette.surfaceStrong,
+              ? colors.wineSoft
+              : colors.surfaceStrong,
           opacity: disabled ? 0.45 : 1,
           ...(Platform.OS === 'web' ? ({ cursor: disabled ? 'not-allowed' : 'pointer' } as ViewStyle) : {}),
         },
-        focusRing(focused),
+        focusRing(focused, selected ? colors.yellow : colors.wine),
         style,
       ]}
     >
-      <AppText variant="support" color={selected ? palette.white : palette.ink}>
+      <AppText variant="support" color={selected ? colors.onPrimary : colors.ink}>
         {label}
       </AppText>
     </Pressable>
@@ -90,6 +92,7 @@ interface SegmentButtonProps<T extends string> {
 }
 
 function SegmentButton<T extends string>({ option, selected, onChange }: SegmentButtonProps<T>) {
+  const { colors } = useAppTheme();
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
 
@@ -115,22 +118,22 @@ function SegmentButton<T extends string>({ option, selected, onChange }: Segment
           borderRadius: radius.sm,
           backgroundColor: selected
             ? pressed || hovered
-              ? palette.wineDark
-              : palette.wine
+              ? colors.primaryHover
+              : colors.primary
             : pressed || hovered
-              ? palette.wineSoft
-              : palette.surfaceStrong,
-          borderColor: selected ? palette.wineDark : palette.line,
+              ? colors.wineSoft
+              : colors.surfaceStrong,
+          borderColor: selected ? colors.primaryPressed : colors.line,
           borderWidth: selected ? 2 : 1,
           ...(Platform.OS === 'web'
             ? ({
                 cursor: 'pointer',
                 boxShadow: focused
-                  ? `0 0 0 2px ${palette.surfaceStrong}, 0 0 0 4px ${palette.wine}`
+                  ? `0 0 0 2px ${colors.surfaceStrong}, 0 0 0 4px ${colors.wine}`
                   : 'none',
               } as ViewStyle)
             : focused
-              ? { borderColor: palette.wineDark, borderWidth: 3 }
+              ? { borderColor: colors.yellow, borderWidth: 3 }
               : {}),
         },
       ]}
@@ -141,13 +144,13 @@ function SegmentButton<T extends string>({ option, selected, onChange }: Segment
           importantForAccessibility={selected ? 'auto' : 'no-hide-descendants'}
           style={{ width: 16, height: 16, opacity: selected ? 1 : 0 }}
         >
-          <Check aria-hidden color={palette.white} size={16} strokeWidth={3} />
+          <Check aria-hidden color={colors.onPrimary} size={16} strokeWidth={3} />
         </View>
         <AppText
           align="center"
           numberOfLines={2}
           variant="support"
-          color={selected ? palette.white : palette.ink}
+          color={selected ? colors.onPrimary : colors.ink}
           style={{ flexShrink: 1 }}
         >
           {option.label}
@@ -164,6 +167,8 @@ export function SegmentedControl<T extends string>({
   onChange,
   style,
 }: SegmentedControlProps<T>) {
+  const { colors } = useAppTheme();
+
   return (
     <View accessibilityLabel={label} accessibilityRole="radiogroup" style={[{ gap: spacing.xs }, style]}>
       <AppText variant="support">{label}</AppText>
@@ -174,8 +179,8 @@ export function SegmentedControl<T extends string>({
           gap: spacing.xs,
           padding: spacing.xxs,
           borderRadius: radius.md,
-          backgroundColor: palette.inset,
-          borderColor: palette.line,
+          backgroundColor: colors.inset,
+          borderColor: colors.line,
           borderWidth: 1,
         }}
       >

@@ -36,10 +36,11 @@ import {
   TextButton,
   TextField,
 } from '@/components/strathfind';
-import { palette, radius, spacing } from '@/constants/design';
+import { radius, spacing } from '@/constants/design';
 import { handoffLabel } from '@/lib/item-utils';
 import type { ItemStatus } from '@/lib/types';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
 type AdminView = 'overview' | 'intake' | 'claims' | 'moderation' | 'codes' | 'audit';
 
@@ -53,6 +54,7 @@ const navItems: { value: AdminView; label: string; icon: ComponentType<LucidePro
 ];
 
 export default function AdminScreen() {
+  const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const wide = width >= 980;
   const {
@@ -114,13 +116,13 @@ export default function AdminScreen() {
     <Screen edges={['top', 'left', 'right', 'bottom']}>
       <ContentShell maxWidth={1380} style={[styles.shell, wide && styles.shellWide]}>
         {wide ? (
-          <View accessibilityLabel="Admin" role="navigation" style={styles.sidebar}>
+          <View accessibilityLabel="Admin" role="navigation" style={[styles.sidebar, { backgroundColor: colors.primary }]}>
             <BrandLockup inverse markSize={42} />
-            <View style={styles.adminIdentity}>
-              <View style={styles.adminAvatar}><ShieldCheck color={palette.yellow} size={24} /></View>
+            <View style={[styles.adminIdentity, { borderColor: colors.onPrimary }]}>
+              <View style={[styles.adminAvatar, { backgroundColor: colors.black }]}><ShieldCheck color={colors.yellow} size={24} /></View>
               <View style={{ flex: 1 }}>
-                <AppText color={palette.white} variant="bodyStrong">{user?.name ?? 'Campus Services'}</AppText>
-                <AppText color="#E6C9D2" variant="support">Administrator</AppText>
+                <AppText color={colors.onPrimary} variant="bodyStrong">{user?.name ?? 'Campus Services'}</AppText>
+                <AppText color={colors.onPrimary} variant="support">Administrator</AppText>
               </View>
             </View>
             <View style={styles.sidebarNav}>
@@ -142,9 +144,9 @@ export default function AdminScreen() {
           <View style={styles.adminTopbar}>
             {!wide ? <BrandLockup markSize={38} /> : <View />}
             <View style={styles.topbarActions}>
-              <View style={styles.liveStatus}>
-                <View style={styles.liveDot} />
-                <AppText color={palette.success} variant="support">
+              <View style={[styles.liveStatus, { backgroundColor: colors.successSoft }]}>
+                <View style={[styles.liveDot, { backgroundColor: colors.success }]} />
+                <AppText color={colors.success} variant="support">
                   {mode === 'setup' ? 'Setup needed' : 'Operations live'}
                 </AppText>
               </View>
@@ -207,6 +209,8 @@ function Overview({
   onReviewIntake: () => void;
   onOpen: (id: string) => void;
 }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.view}>
       <SectionHeading title="Overview" level={1} />
@@ -220,11 +224,11 @@ function Overview({
       <Surface padding="lg" tone="strong" style={styles.queue}>
         <SectionHeading title="Handoff queue" level={3} />
         {intake.length ? intake.slice(0, 3).map((item) => (
-          <View key={item.id} style={styles.queueRow}>
-            <View style={styles.queueIcon}><Clock3 color={item.status === 'handoff_due' ? palette.danger : palette.wine} size={22} /></View>
+          <View key={item.id} style={[styles.queueRow, { borderTopColor: colors.lineSoft }]}>
+            <View style={[styles.queueIcon, { backgroundColor: colors.inset }]}><Clock3 color={item.status === 'handoff_due' ? colors.danger : colors.wine} size={22} /></View>
             <View style={styles.queueCopy}>
               <AppText variant="bodyStrong">{item.title}</AppText>
-              <AppText color={palette.muted} variant="support">{item.location} · {handoffLabel(item)}</AppText>
+              <AppText color={colors.muted} variant="support">{item.location} · {handoffLabel(item)}</AppText>
             </View>
             {item.status !== 'at_office' ? (
               <PrimaryButton icon={ScanLine} onPress={onReviewIntake}>Review intake</PrimaryButton>
@@ -251,6 +255,7 @@ function Intake({
   onOpen: (id: string) => void;
   onReturn: (id: string) => void;
 }) {
+  const { colors } = useAppTheme();
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -292,7 +297,7 @@ function Intake({
             ) : claims.some((claim) => claim.itemId === item.id && claim.status === 'accepted') ? (
               <PrimaryButton icon={CheckCircle2} onPress={() => onReturn(item.id)}>Mark returned</PrimaryButton>
             ) : (
-              <AppText color={palette.muted} variant="support">Awaiting an approved ownership claim.</AppText>
+              <AppText color={colors.muted} variant="support">Awaiting an approved ownership claim.</AppText>
             )}
             <SecondaryButton onPress={() => onOpen(item.id)}>Details</SecondaryButton>
           </View>
@@ -311,6 +316,8 @@ function Claims({
   items: ReturnType<typeof useAppState>['items'];
   onReview: ReturnType<typeof useAppState>['reviewClaim'];
 }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.view}>
       <SectionHeading title="Claims" level={1} />
@@ -318,12 +325,12 @@ function Claims({
         const item = items.find((candidate) => candidate.id === claim.itemId);
         return (
           <Surface key={claim.id} padding="lg" style={styles.claimRow}>
-            <View style={styles.claimIcon}><ClipboardCheck color={palette.wine} size={24} /></View>
+            <View style={[styles.claimIcon, { backgroundColor: colors.wineSoft }]}><ClipboardCheck color={colors.wine} size={24} /></View>
             <View style={{ flex: 1, gap: spacing.xxs }}>
               <AppText variant="bodyStrong">{item?.title ?? 'Item claim'}</AppText>
-              <AppText color={palette.inkSoft} variant="support">Claimant: {claim.claimantName ?? 'Verified student'}</AppText>
-              <AppText color={palette.muted} variant="support">Private answer: {claim.note}</AppText>
-              <AppText color={palette.muted} variant="micro">{new Date(claim.createdAt).toLocaleString()}</AppText>
+              <AppText color={colors.inkSoft} variant="support">Claimant: {claim.claimantName ?? 'Verified student'}</AppText>
+              <AppText color={colors.muted} variant="support">Private answer: {claim.note}</AppText>
+              <AppText color={colors.muted} variant="micro">{new Date(claim.createdAt).toLocaleString()}</AppText>
             </View>
             <View style={styles.claimActions}>
               <StatusPill label={claim.status} tone={claim.status === 'pending' ? 'warning' : claim.status === 'accepted' ? 'success' : 'danger'} />
@@ -342,21 +349,23 @@ function Claims({
 }
 
 function Codes({ generatedCode, onGenerate }: { generatedCode: string; onGenerate: () => Promise<void> }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.view}>
       <SectionHeading title="Access codes" level={1} />
       <Surface padding="xl" style={styles.codeCard}>
-        <View style={styles.codeIcon}><KeyRound color={palette.yellow} size={30} /></View>
-        <AppText color={palette.muted} variant="micro">LATEST UNIVERSITY CODE</AppText>
-        <AppText selectable style={styles.codeText} variant="h1">{generatedCode}</AppText>
-        <AppText align="center" color={palette.muted} variant="support">Expires in seven days.</AppText>
+        <View style={[styles.codeIcon, { backgroundColor: colors.black }]}><KeyRound color={colors.yellow} size={30} /></View>
+        <AppText color={colors.muted} variant="micro">LATEST UNIVERSITY CODE</AppText>
+        <AppText color={colors.wine} selectable style={styles.codeText} variant="h1">{generatedCode}</AppText>
+        <AppText align="center" color={colors.muted} variant="support">Expires in seven days.</AppText>
         <PrimaryButton onPress={() => void onGenerate()}>Create new code</PrimaryButton>
       </Surface>
       <Surface padding="lg" tone="inset" style={styles.policyRow}>
-        <ShieldCheck color={palette.wine} size={24} />
+        <ShieldCheck color={colors.wine} size={24} />
         <View style={{ flex: 1 }}>
           <AppText variant="bodyStrong">No public admin signup</AppText>
-          <AppText color={palette.muted} variant="support">Provisioned by a trusted admin.</AppText>
+          <AppText color={colors.muted} variant="support">Provisioned by a trusted admin.</AppText>
         </View>
       </Surface>
     </View>
@@ -374,6 +383,7 @@ function Moderation({
   onOpen: (itemId: string) => void;
   onReview: ReturnType<typeof useAppState>['reviewFlag'];
 }) {
+  const { colors } = useAppTheme();
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string>();
@@ -407,11 +417,11 @@ function Moderation({
         return (
           <Surface key={flag.id} padding="lg" style={styles.flagCard}>
             <View style={styles.flagHeading}>
-              <View style={styles.claimIcon}><Flag color={palette.wine} size={23} /></View>
+              <View style={[styles.claimIcon, { backgroundColor: colors.wineSoft }]}><Flag color={colors.wine} size={23} /></View>
               <View style={{ flex: 1, gap: spacing.xxs }}>
-                <AppText color={palette.wine} variant="micro">{flag.reason.toUpperCase()}</AppText>
+                <AppText color={colors.wine} variant="micro">{flag.reason.toUpperCase()}</AppText>
                 <AppText variant="h3">{item?.title ?? 'Campus report'}</AppText>
-                <AppText color={palette.muted} variant="micro">{new Date(flag.createdAt).toLocaleString()}</AppText>
+                <AppText color={colors.muted} variant="micro">{new Date(flag.createdAt).toLocaleString()}</AppText>
               </View>
               <StatusPill
                 label={flag.status}
@@ -419,7 +429,7 @@ function Moderation({
               />
             </View>
             <Surface padding="md" tone="inset">
-              <AppText color={palette.muted} variant="micro">STUDENT REPORT</AppText>
+              <AppText color={colors.muted} variant="micro">STUDENT REPORT</AppText>
               <AppText variant="support">{flag.details}</AppText>
             </Surface>
             {flag.status === 'open' ? (
@@ -452,7 +462,7 @@ function Moderation({
             ) : (
               <View style={styles.resolutionRow}>
                 <View style={{ flex: 1, gap: spacing.xxs }}>
-                  <AppText color={palette.muted} variant="micro">RESOLUTION</AppText>
+                  <AppText color={colors.muted} variant="micro">RESOLUTION</AppText>
                   <AppText variant="support">{flag.resolutionNote ?? 'Reviewed by campus staff.'}</AppText>
                 </View>
                 <TextButton onPress={() => onOpen(flag.itemId)}>Open report</TextButton>
@@ -466,18 +476,20 @@ function Moderation({
 }
 
 function Audit({ entries }: { entries: ReturnType<typeof useAppState>['activity'] }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.view}>
       <SectionHeading title="Audit trail" level={1} />
       <Surface padding={0} tone="strong">
         {entries.map((entry, index) => (
-          <View key={entry.id} style={[styles.auditRow, index > 0 && styles.auditBorder]}>
-            <View style={styles.auditDot} />
+          <View key={entry.id} style={[styles.auditRow, index > 0 && styles.auditBorder, index > 0 && { borderTopColor: colors.lineSoft }]}>
+            <View style={[styles.auditDot, { backgroundColor: colors.wine }]} />
             <View style={{ flex: 1 }}>
               <AppText variant="bodyStrong">{entry.title}</AppText>
-              <AppText color={palette.muted} variant="support">{entry.message}</AppText>
+              <AppText color={colors.muted} variant="support">{entry.message}</AppText>
             </View>
-            <AppText color={palette.muted} variant="micro">{new Date(entry.createdAt).toLocaleDateString()}</AppText>
+            <AppText color={colors.muted} variant="micro">{new Date(entry.createdAt).toLocaleDateString()}</AppText>
           </View>
         ))}
       </Surface>
@@ -486,25 +498,29 @@ function Audit({ entries }: { entries: ReturnType<typeof useAppState>['activity'
 }
 
 function Metric({ icon: Icon, label, value, urgent = false }: { icon: ComponentType<LucideProps>; label: string; value: number; urgent?: boolean }) {
+  const { colors } = useAppTheme();
+
   return (
     <Surface padding="lg" style={styles.metric}>
-      <View style={[styles.metricIcon, urgent && styles.metricUrgent]}><Icon color={urgent ? palette.danger : palette.wine} size={22} /></View>
-      <AppText color={urgent ? palette.danger : palette.ink} variant="h1">{value}</AppText>
-      <AppText color={palette.muted} variant="support">{label}</AppText>
+      <View style={[styles.metricIcon, { backgroundColor: urgent ? colors.dangerSoft : colors.wineSoft }]}><Icon color={urgent ? colors.danger : colors.wine} size={22} /></View>
+      <AppText color={urgent ? colors.danger : colors.ink} variant="h1">{value}</AppText>
+      <AppText color={colors.muted} variant="support">{label}</AppText>
     </Surface>
   );
 }
 
 function AdminNavButton({ icon: Icon, label, onPress, selected = false }: { icon: ComponentType<LucideProps>; label: string; onPress: () => void; selected?: boolean }) {
+  const { colors } = useAppTheme();
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
-      style={({ pressed }) => [styles.navButton, selected && styles.navButtonSelected, pressed && { opacity: 0.8 }]}
+      style={({ pressed }) => [styles.navButton, selected && { backgroundColor: colors.yellow }, pressed && { opacity: 0.8 }]}
     >
-      <Icon color={selected ? palette.black : palette.white} size={20} />
-      <AppText color={selected ? palette.black : palette.white} variant="bodyStrong">{label}</AppText>
+      <Icon color={selected ? colors.black : colors.onPrimary} size={20} />
+      <AppText color={selected ? colors.black : colors.onPrimary} variant="bodyStrong">{label}</AppText>
     </Pressable>
   );
 }
@@ -512,32 +528,30 @@ function AdminNavButton({ icon: Icon, label, onPress, selected = false }: { icon
 const styles = StyleSheet.create({
   shell: { flex: 1, gap: spacing.lg },
   shellWide: { flexDirection: 'row', alignItems: 'stretch', paddingTop: spacing.lg },
-  sidebar: { width: 260, minHeight: Platform.OS === 'web' ? 760 : undefined, gap: spacing.lg, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: palette.wine },
-  adminIdentity: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#9A3A56' },
-  adminAvatar: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: palette.black },
+  sidebar: { width: 260, minHeight: Platform.OS === 'web' ? 760 : undefined, gap: spacing.lg, padding: spacing.lg, borderRadius: radius.xl },
+  adminIdentity: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md, borderTopWidth: 1, borderBottomWidth: 1 },
+  adminAvatar: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   sidebarNav: { flex: 1, gap: spacing.xs },
   navButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md },
-  navButtonSelected: { backgroundColor: palette.yellow },
   main: { flex: 1, minWidth: 0, gap: spacing.lg, paddingBottom: spacing.xxl },
   adminTopbar: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   topbarActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  liveStatus: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, minHeight: 40, borderRadius: radius.pill, backgroundColor: palette.successSoft },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: palette.success },
+  liveStatus: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, minHeight: 40, borderRadius: radius.pill },
+  liveDot: { width: 8, height: 8, borderRadius: 4 },
   mobileNav: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   view: { gap: spacing.xl },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   metric: { minWidth: 180, flex: 1, gap: spacing.xs },
-  metricIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: palette.wineSoft },
-  metricUrgent: { backgroundColor: palette.dangerSoft },
+  metricIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   queue: { gap: spacing.lg },
-  queueRow: { minHeight: 74, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: palette.lineSoft },
-  queueIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: palette.inset },
+  queueRow: { minHeight: 74, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: 1 },
+  queueIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   queueCopy: { flex: 1, minWidth: 180 },
   intakeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md },
   intakeCard: { flex: 1, minWidth: 0 },
   intakeActions: { width: '100%', maxWidth: 280, gap: spacing.xs },
   claimRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md },
-  claimIcon: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: palette.wineSoft },
+  claimIcon: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   claimActions: { alignItems: 'flex-end', gap: spacing.sm },
   claimButtons: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: spacing.xs },
   flagCard: { gap: spacing.md },
@@ -545,10 +559,10 @@ const styles = StyleSheet.create({
   flagActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: spacing.xs },
   resolutionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   codeCard: { alignItems: 'center', gap: spacing.md },
-  codeIcon: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg, backgroundColor: palette.black },
-  codeText: { color: palette.wine, letterSpacing: 2 },
+  codeIcon: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg },
+  codeText: { letterSpacing: 2 },
   policyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   auditRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
-  auditBorder: { borderTopWidth: 1, borderTopColor: palette.lineSoft },
-  auditDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: palette.wine },
+  auditBorder: { borderTopWidth: 1 },
+  auditDot: { width: 10, height: 10, borderRadius: 5 },
 });

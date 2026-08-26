@@ -1,7 +1,8 @@
 import { View, type ViewStyle } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
-import { palette, spacing } from '@/constants/design';
+import { spacing } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 import { AppText } from './typography';
 
@@ -13,6 +14,8 @@ export interface BrandMarkProps {
 
 /** Production vector mark, rendered natively without an SVG asset loader. */
 export function BrandMark({ size = 48, style, decorative = false }: BrandMarkProps) {
+  const { colors } = useAppTheme();
+
   return (
     <View
       accessibilityElementsHidden={decorative}
@@ -22,16 +25,16 @@ export function BrandMark({ size = 48, style, decorative = false }: BrandMarkPro
       style={[{ width: size, height: size }, style]}
     >
       <Svg width={size} height={size} viewBox="0 0 1024 1024">
-        <Rect width="1024" height="1024" rx="224" fill={palette.wine} />
-        <Circle cx="414" cy="394" r="248" fill={palette.black} />
+        <Rect width="1024" height="1024" rx="224" fill={colors.cardRed} />
+        <Circle cx="414" cy="394" r="248" fill={colors.black} />
         <Path
           d="M568 548 774 754"
           fill="none"
-          stroke={palette.black}
+          stroke={colors.black}
           strokeWidth="128"
           strokeLinecap="round"
         />
-        <Circle cx="414" cy="394" r="164" fill={palette.yellow} />
+        <Circle cx="414" cy="394" r="164" fill={colors.yellow} />
       </Svg>
     </View>
   );
@@ -45,6 +48,8 @@ export interface BrandLockupProps {
 }
 
 export function BrandLockup({ markSize = 44, inverse = false, compact = false, style }: BrandLockupProps) {
+  const { colors } = useAppTheme();
+
   return (
     <View
       accessible
@@ -54,7 +59,7 @@ export function BrandLockup({ markSize = 44, inverse = false, compact = false, s
     >
       <BrandMark size={markSize} decorative />
       {!compact ? (
-        <AppText variant="h3" color={inverse ? palette.white : palette.wine}>
+        <AppText variant="h3" color={inverse ? colors.onPrimary : colors.wine}>
           StrathFind
         </AppText>
       ) : null}

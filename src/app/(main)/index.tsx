@@ -12,12 +12,14 @@ import {
 } from 'react-native';
 
 import { AppText, BrandLockup, ContentShell, IconButton, Screen } from '@/components/strathfind';
-import { focusRing, palette, radius, raisedShadow, spacing } from '@/constants/design';
+import { focusRing, radius, raisedShadow, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
+import { useAppTheme } from '@/theme/app-theme';
 
 export default function HomeScreen() {
   const params = useLocalSearchParams<{ help?: string }>();
   const { width } = useWindowDimensions();
+  const { colors } = useAppTheme();
   const [helpOpen, setHelpOpen] = useState(false);
   const [focusedAction, setFocusedAction] = useState<'lost' | 'found' | null>(null);
   const compact = width < 620;
@@ -34,7 +36,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <Screen edges={['top', 'left', 'right']}>
+    <Screen backgroundColor={colors.canvas} edges={['top', 'left', 'right']}>
       <ContentShell maxWidth={1120} style={styles.shell}>
         <View style={styles.topbar}>
           <IconButton
@@ -76,18 +78,28 @@ export default function HomeScreen() {
         transparent
         visible={helpOpen}
       >
-        <View style={styles.modalRoot}>
+        <View style={[styles.modalRoot, { backgroundColor: colors.scrim }]}>
           <Pressable
             accessibilityLabel="Close help"
             accessibilityRole="button"
             onPress={() => setHelpOpen(false)}
             style={StyleSheet.absoluteFill}
           />
-          <View accessibilityViewIsModal style={styles.helpCard}>
+          <View
+            accessibilityViewIsModal
+            style={[
+              styles.helpCard,
+              {
+                backgroundColor: colors.surfaceStrong,
+                borderColor: colors.lineSoft,
+                ...raisedShadow('lg', colors.black),
+              },
+            ]}
+          >
             <View style={styles.helpHeading}>
               <View style={{ flex: 1, gap: spacing.xxs }}>
-                <AppText accessibilityRole="header" variant="h2">Find it. Return it.</AppText>
-                <AppText color={palette.muted} variant="support">Strathmore campus lost & found.</AppText>
+                <AppText accessibilityRole="header" color={colors.ink} variant="h2">Find it. Return it.</AppText>
+                <AppText color={colors.muted} variant="support">Strathmore campus lost & found.</AppText>
               </View>
               <IconButton accessibilityLabel="Close help" icon={X} onPress={() => setHelpOpen(false)} />
             </View>
@@ -118,8 +130,10 @@ function HomeAction({
   onPress: () => void;
   tone: 'lost' | 'found';
 }) {
-  const background = tone === 'lost' ? palette.wine : palette.teal;
-  const pressedBackground = tone === 'lost' ? palette.winePressed : palette.tealDark;
+  const { colors } = useAppTheme();
+  const background = tone === 'lost' ? colors.cardRed : colors.cardGreen;
+  const pressedBackground = tone === 'lost' ? colors.cardRedPressed : colors.cardGreenPressed;
+  const foreground = tone === 'lost' ? colors.onCardRed : colors.onCardGreen;
 
   return (
     <Pressable
@@ -133,24 +147,29 @@ function HomeAction({
         {
           backgroundColor: pressed || hovered ? pressedBackground : background,
           transform: [{ scale: pressed ? 0.985 : 1 }],
+          ...raisedShadow('md', colors.black),
           ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as ViewStyle) : {}),
         },
-        focusRing(focused),
+        focusRing(focused, foreground),
       ]}
     >
-      <View style={styles.actionIcon}>
-        <Icon aria-hidden color={palette.ink} size={28} strokeWidth={2.4} />
+      <View style={[styles.actionIcon, { backgroundColor: colors.yellow }]}>
+        <Icon aria-hidden color={colors.black} size={28} strokeWidth={2.4} />
       </View>
-      <AppText color={palette.white} style={styles.actionLabel}>{label}</AppText>
+      <AppText color={foreground} style={styles.actionLabel}>{label}</AppText>
     </Pressable>
   );
 }
 
 function HelpRow({ index, text }: { index: string; text: string }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.helpRow}>
-      <View style={styles.helpNumber}><AppText color={palette.wine} variant="support">{index}</AppText></View>
-      <AppText style={{ flex: 1 }} variant="body">{text}</AppText>
+      <View style={[styles.helpNumber, { backgroundColor: colors.wineSoft }]}>
+        <AppText color={colors.wine} variant="support">{index}</AppText>
+      </View>
+      <AppText color={colors.ink} style={{ flex: 1 }} variant="body">{text}</AppText>
     </View>
   );
 }
@@ -176,7 +195,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: spacing.xl,
     borderRadius: 44,
-    ...raisedShadow('md'),
   },
   actionIcon: {
     width: 56,
@@ -184,7 +202,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.lg,
-    backgroundColor: palette.yellow,
   },
   actionLabel: {
     fontSize: 48,
@@ -197,7 +214,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.md,
-    backgroundColor: 'rgba(36,27,30,0.58)',
   },
   helpCard: {
     width: '100%',
@@ -205,8 +221,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.lg,
     borderRadius: radius.xl,
-    backgroundColor: palette.surfaceStrong,
-    ...raisedShadow('lg'),
+    borderWidth: 1,
   },
   helpHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   helpRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -216,6 +231,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,
-    backgroundColor: palette.wineSoft,
   },
 });

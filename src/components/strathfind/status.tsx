@@ -1,7 +1,8 @@
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { palette, radius, spacing } from '@/constants/design';
+import { radius, spacing, type AppPalette } from '@/constants/design';
 import type { ItemKind, ItemStatus } from '@/lib/types';
+import { useAppTheme } from '@/theme/app-theme';
 
 import { AppText } from './typography';
 
@@ -16,13 +17,15 @@ const statusContent: Record<ItemStatus, { label: string; tone: StatusTone }> = {
   returned: { label: 'Returned', tone: 'success' },
 };
 
-const toneColors: Record<StatusTone, { background: string; foreground: string }> = {
-  neutral: { background: palette.inset, foreground: palette.inkSoft },
-  info: { background: palette.blueSoft, foreground: palette.blue },
-  warning: { background: palette.warningSoft, foreground: palette.warning },
-  success: { background: palette.successSoft, foreground: palette.success },
-  danger: { background: palette.dangerSoft, foreground: palette.danger },
-};
+function getToneColors(colors: AppPalette): Record<StatusTone, { background: string; foreground: string }> {
+  return {
+    neutral: { background: colors.inset, foreground: colors.inkSoft },
+    info: { background: colors.blueSoft, foreground: colors.blue },
+    warning: { background: colors.warningSoft, foreground: colors.warning },
+    success: { background: colors.successSoft, foreground: colors.success },
+    danger: { background: colors.dangerSoft, foreground: colors.danger },
+  };
+}
 
 export interface StatusPillProps {
   status?: ItemStatus;
@@ -33,12 +36,13 @@ export interface StatusPillProps {
 }
 
 export function StatusPill({ status, kind, label, tone, style }: StatusPillProps) {
+  const { colors: themeColors } = useAppTheme();
   const content = status
     ? statusContent[status]
     : kind
       ? { label: kind === 'found' ? 'Found' : 'Lost', tone: kind === 'found' ? ('success' as const) : ('warning' as const) }
       : { label: label ?? 'Open', tone: tone ?? ('neutral' as const) };
-  const colors = toneColors[tone ?? content.tone];
+  const colors = getToneColors(themeColors)[tone ?? content.tone];
 
   return (
     <View

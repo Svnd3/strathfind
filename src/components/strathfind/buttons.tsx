@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import type { LucideProps } from 'lucide-react-native';
 
-import { focusRing, layout, palette, radius, spacing } from '@/constants/design';
+import { focusRing, layout, radius, spacing } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 import { AppText } from './typography';
 
@@ -40,10 +41,11 @@ function Button({
   children,
   ...props
 }: PropsWithChildren<ButtonProps & { tone: ButtonTone }>) {
+  const { colors } = useAppTheme();
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const inactive = disabled || loading;
-  const foreground = tone === 'primary' ? palette.white : palette.wine;
+  const foreground = tone === 'primary' ? colors.onPrimary : colors.wine;
 
   return (
     <Pressable
@@ -68,20 +70,20 @@ function Button({
           paddingVertical: spacing.sm,
           borderRadius: radius.md,
           borderWidth: tone === 'text' ? 0 : 1,
-          borderColor: tone === 'secondary' ? palette.wine : 'transparent',
+          borderColor: tone === 'secondary' ? colors.wine : 'transparent',
           backgroundColor:
             tone === 'primary'
               ? pressed
-                ? palette.winePressed
+                ? colors.primaryPressed
                 : hovered
-                  ? palette.wineDark
-                  : palette.wine
+                  ? colors.primaryHover
+                  : colors.primary
               : tone === 'secondary'
                 ? pressed || hovered
-                  ? palette.wineSoft
-                  : palette.surfaceStrong
+                  ? colors.wineSoft
+                  : colors.surfaceStrong
                 : pressed || hovered
-                  ? palette.wineSoft
+                  ? colors.wineSoft
                   : 'transparent',
           alignItems: 'center',
           justifyContent: 'center',
@@ -92,7 +94,7 @@ function Button({
           transform: [{ scale: pressed ? 0.985 : 1 }],
           ...(Platform.OS === 'web' ? ({ cursor: inactive ? 'not-allowed' : 'pointer' } as ViewStyle) : {}),
         },
-        focusRing(focused),
+        focusRing(focused, tone === 'primary' ? colors.yellow : colors.wine),
         style,
       ]}
     >
@@ -150,6 +152,7 @@ export function IconButton({
   style,
   ...props
 }: IconButtonProps) {
+  const { colors } = useAppTheme();
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
 
@@ -177,17 +180,17 @@ export function IconButton({
           borderRadius: radius.pill,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: selected || pressed || hovered ? palette.wineSoft : palette.surfaceStrong,
+          backgroundColor: selected || pressed || hovered ? colors.wineSoft : colors.surfaceStrong,
           borderWidth: 1,
-          borderColor: selected ? palette.wine : palette.lineSoft,
+          borderColor: selected ? colors.wine : colors.lineSoft,
           opacity: disabled ? 0.45 : 1,
           ...(Platform.OS === 'web' ? ({ cursor: disabled ? 'not-allowed' : 'pointer' } as ViewStyle) : {}),
         },
-        focusRing(focused),
+        focusRing(focused, colors.wine),
         style,
       ]}
     >
-      <Icon color={selected ? palette.wine : palette.ink} size={size} strokeWidth={2.2} />
+      <Icon color={selected ? colors.wine : colors.ink} size={size} strokeWidth={2.2} />
     </Pressable>
   );
 }

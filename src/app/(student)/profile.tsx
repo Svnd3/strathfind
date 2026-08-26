@@ -14,11 +14,13 @@ import {
   StatusPill,
   Surface,
 } from '@/components/strathfind';
-import { palette, radius, spacing } from '@/constants/design';
+import { radius, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
 export default function ProfileScreen() {
+  const { colors } = useAppTheme();
   const { mode, signOut, user } = useAppState();
   const [hapticFeedback, setHapticFeedback] = useState(true);
 
@@ -53,15 +55,15 @@ export default function ProfileScreen() {
         </View>
 
         <Surface padding="lg" style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <AppText color={palette.yellow} variant="h2">{initials}</AppText>
+          <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+            <AppText color={colors.onPrimary} variant="h2">{initials}</AppText>
           </View>
           <View style={styles.profileCopy}>
             <AppText accessibilityRole="header" variant="h2">{user?.name ?? 'Student'}</AppText>
-            <AppText color={palette.muted} variant="body">{user?.email}</AppText>
+            <AppText color={colors.muted} variant="body">{user?.email}</AppText>
             <View style={styles.verifiedRow}>
-              <LockKeyhole color={palette.success} size={16} />
-              <AppText color={palette.success} variant="support">Verified student · {user?.campusId}</AppText>
+              <LockKeyhole color={colors.success} size={16} />
+              <AppText color={colors.success} variant="support">Verified student · {user?.campusId}</AppText>
             </View>
           </View>
         </Surface>
@@ -91,23 +93,31 @@ export default function ProfileScreen() {
 
         <SectionHeading level={3} title="Campus lost & found" />
         <Surface padding="lg" tone="inset" style={styles.officeCard}>
-          <View style={styles.officeIcon}><Building2 color={palette.wine} size={24} /></View>
+          <View style={[styles.officeIcon, { backgroundColor: colors.surfaceStrong }]}>
+            <Building2 color={colors.wine} size={24} />
+          </View>
           <View style={{ flex: 1, gap: spacing.xxs }}>
             <AppText variant="bodyStrong">Student Centre desk</AppText>
-            <AppText color={palette.muted} variant="support">Mon–Fri · 8:00–17:00</AppText>
+            <AppText color={colors.muted} variant="support">Mon–Fri · 8:00–17:00</AppText>
           </View>
         </Surface>
 
         <SectionHeading level={3} title="Privacy & safety" />
         <Surface padding="lg" tone="inset" style={styles.officeCard}>
-          <View style={styles.officeIcon}><LockKeyhole color={palette.wine} size={24} /></View>
+          <View style={[styles.officeIcon, { backgroundColor: colors.surfaceStrong }]}>
+            <LockKeyhole color={colors.wine} size={24} />
+          </View>
           <View style={{ flex: 1, gap: spacing.xxs }}>
             <AppText variant="bodyStrong">Contact stays protected</AppText>
-            <AppText color={palette.muted} variant="support">Visible only after you approve a claim.</AppText>
+            <AppText color={colors.muted} variant="support">Visible only after you approve a claim.</AppText>
           </View>
         </Surface>
 
-        <PrimaryButton icon={LogOut} onPress={() => void leave()} style={styles.signOut}>
+        <PrimaryButton
+          icon={LogOut}
+          onPress={() => void leave()}
+          style={[styles.signOut, { backgroundColor: colors.black }]}
+        >
           Sign out
         </PrimaryButton>
       </ContentShell>
@@ -116,7 +126,8 @@ export default function ProfileScreen() {
 }
 
 function Divider() {
-  return <View style={styles.divider} />;
+  const { colors } = useAppTheme();
+  return <View style={[styles.divider, { backgroundColor: colors.lineSoft }]} />;
 }
 
 function SettingRow({
@@ -132,18 +143,23 @@ function SettingRow({
   onValueChange: (value: boolean) => void;
   value: boolean;
 }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.settingRow}>
-      <View style={styles.settingIcon}><Icon color={palette.wine} size={20} /></View>
+      <View style={[styles.settingIcon, { backgroundColor: colors.wineSoft }]}>
+        <Icon color={colors.wine} size={20} />
+      </View>
       <View style={{ flex: 1 }}>
         <AppText variant="bodyStrong">{label}</AppText>
-        <AppText color={palette.muted} variant="support">{copy}</AppText>
+        <AppText color={colors.muted} variant="support">{copy}</AppText>
       </View>
       <Switch
         accessibilityLabel={label}
+        hitSlop={8}
         onValueChange={onValueChange}
-        thumbColor={palette.white}
-        trackColor={{ false: palette.line, true: palette.wine }}
+        thumbColor={colors.white}
+        trackColor={{ false: colors.line, true: colors.wine }}
         value={value}
       />
     </View>
@@ -151,12 +167,16 @@ function SettingRow({
 }
 
 function InfoRow({ copy, icon: Icon, label }: { copy: string; icon: ComponentType<LucideProps>; label: string }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.settingRow}>
-      <View style={styles.settingIcon}><Icon color={palette.wine} size={20} /></View>
+      <View style={[styles.settingIcon, { backgroundColor: colors.wineSoft }]}>
+        <Icon color={colors.wine} size={20} />
+      </View>
       <View style={{ flex: 1 }}>
         <AppText variant="bodyStrong">{label}</AppText>
-        <AppText color={palette.muted} variant="support">{copy}</AppText>
+        <AppText color={colors.muted} variant="support">{copy}</AppText>
       </View>
       <StatusPill label="On" tone="success" />
     </View>
@@ -167,13 +187,13 @@ const styles = StyleSheet.create({
   shell: { gap: spacing.lg, paddingTop: spacing.md },
   topbar: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  avatar: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg, backgroundColor: palette.wine },
+  avatar: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center', borderRadius: radius.lg },
   profileCopy: { flex: 1, gap: spacing.xxs },
   verifiedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
   settingRow: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  settingIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: palette.wineSoft },
-  divider: { height: 1, marginLeft: 68, backgroundColor: palette.lineSoft },
+  settingIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+  divider: { height: 1, marginLeft: 68 },
   officeCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  officeIcon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: palette.surfaceStrong },
-  signOut: { alignSelf: 'stretch', backgroundColor: palette.ink },
+  officeIcon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+  signOut: { alignSelf: 'stretch' },
 });

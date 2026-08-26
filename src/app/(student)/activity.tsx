@@ -15,9 +15,10 @@ import {
   Surface,
   TextButton,
 } from '@/components/strathfind';
-import { palette, radius, spacing } from '@/constants/design';
+import { radius, spacing } from '@/constants/design';
 import type { ActivityKind } from '@/state';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
 type ActivityFilter = 'all' | 'report' | 'claim' | 'match';
 
@@ -31,6 +32,7 @@ const activityIcons: Record<ActivityKind, ComponentType<LucideProps>> = {
 };
 
 export default function ActivityScreen() {
+  const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const { currentUserActivity, currentUserItems, markNotificationRead } = useAppState();
   const [filter, setFilter] = useState<ActivityFilter>('all');
@@ -55,9 +57,9 @@ export default function ActivityScreen() {
             <AppText accessibilityRole="header" variant="h1">Activity</AppText>
           </View>
           {unread ? (
-            <View style={styles.unreadPill}>
-              <BellRing color={palette.wine} size={18} />
-              <AppText color={palette.wine} variant="support">{unread} new</AppText>
+            <View style={[styles.unreadPill, { backgroundColor: colors.wineSoft }]}>
+              <BellRing color={colors.wine} size={18} />
+              <AppText color={colors.wine} variant="support">{unread} new</AppText>
             </View>
           ) : null}
         </View>
@@ -81,18 +83,42 @@ export default function ActivityScreen() {
                 const Icon = activityIcons[entry.kind];
                 return (
                   <View key={entry.id} style={styles.activityRow}>
-                    <View style={[styles.activityRail, index === filteredActivity.length - 1 && styles.lastRail]}>
-                      <View style={[styles.activityIcon, !entry.read && styles.activityIconUnread]}>
-                        <Icon color={entry.read ? palette.muted : palette.wine} size={19} />
+                    <View
+                      style={[
+                        styles.activityRail,
+                        {
+                          borderRightColor:
+                            index === filteredActivity.length - 1
+                              ? 'transparent'
+                              : colors.lineSoft,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.activityIcon,
+                          { backgroundColor: colors.inset, borderColor: colors.lineSoft },
+                          !entry.read && {
+                            backgroundColor: colors.wineSoft,
+                            borderColor: colors.wine,
+                          },
+                        ]}
+                      >
+                        <Icon color={entry.read ? colors.muted : colors.wine} size={19} />
                       </View>
                     </View>
                     <View style={styles.activityCopy}>
                       <View style={styles.activityTitleRow}>
                         <AppText variant="bodyStrong">{entry.title}</AppText>
-                        {!entry.read ? <View accessibilityLabel="Unread" style={styles.dot} /> : null}
+                        {!entry.read ? (
+                          <View
+                            accessibilityLabel="Unread"
+                            style={[styles.dot, { backgroundColor: colors.wine }]}
+                          />
+                        ) : null}
                       </View>
-                      <AppText color={palette.muted} variant="support">{entry.message}</AppText>
-                      <AppText color={palette.muted} variant="micro">{formatRelative(entry.createdAt)}</AppText>
+                      <AppText color={colors.muted} variant="support">{entry.message}</AppText>
+                      <AppText color={colors.muted} variant="micro">{formatRelative(entry.createdAt)}</AppText>
                       {entry.itemId ? (
                         <TextButton onPress={() => openEntry(entry.id, entry.itemId)}>Open report</TextButton>
                       ) : null}
@@ -147,16 +173,14 @@ const styles = StyleSheet.create({
   shell: { gap: spacing.xl, paddingTop: spacing.xl },
   top: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
   heading: { flex: 1, gap: spacing.xs },
-  unreadPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, minHeight: 40, borderRadius: radius.pill, backgroundColor: palette.wineSoft },
+  unreadPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.sm, minHeight: 40, borderRadius: radius.pill },
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   timeline: { gap: spacing.lg },
   activityRow: { flexDirection: 'row', gap: spacing.md },
-  activityRail: { alignItems: 'center', width: 44, borderRightWidth: 1, borderRightColor: palette.lineSoft, marginRight: 2 },
-  lastRail: { borderRightColor: 'transparent' },
-  activityIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: -40, borderRadius: radius.pill, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.lineSoft },
-  activityIconUnread: { backgroundColor: palette.wineSoft, borderColor: palette.wine },
+  activityRail: { alignItems: 'center', width: 44, borderRightWidth: 1, marginRight: 2 },
+  activityIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: -40, borderRadius: radius.pill, borderWidth: 1 },
   activityCopy: { flex: 1, gap: spacing.xxs, paddingBottom: spacing.lg },
   activityTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: palette.wine },
+  dot: { width: 8, height: 8, borderRadius: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
 });

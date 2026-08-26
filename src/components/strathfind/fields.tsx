@@ -9,7 +9,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { layout, palette, radius, spacing, type as typeScale } from '@/constants/design';
+import { layout, radius, spacing, type as typeScale } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 import { AppText } from './typography';
 
@@ -40,6 +41,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
   },
   ref,
 ) {
+  const { colors } = useAppTheme();
   const [focused, setFocused] = useState(false);
   const generatedId = useId();
   const inputId = props.nativeID ?? `field-${generatedId}`;
@@ -47,7 +49,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
 
   return (
     <View style={[{ gap: spacing.xs }, containerStyle]}>
-      <AppText nativeID={`${inputId}-label`} variant="support" color={palette.ink}>
+      <AppText nativeID={`${inputId}-label`} variant="support" color={colors.ink}>
         {label}
       </AppText>
       <View
@@ -60,8 +62,8 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
           paddingVertical: multiline ? spacing.sm : 0,
           borderRadius: radius.md,
           borderWidth: focused ? 2 : 1,
-          borderColor: error ? palette.danger : focused ? palette.wine : palette.line,
-          backgroundColor: editable ? palette.surfaceStrong : palette.inset,
+          borderColor: error ? colors.danger : focused ? colors.wine : colors.line,
+          backgroundColor: editable ? colors.surfaceStrong : colors.inset,
           opacity: editable ? 1 : 0.65,
         }}
       >
@@ -85,15 +87,15 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
             setFocused(true);
             onFocus?.(event);
           }}
-          placeholderTextColor={palette.muted}
-          selectionColor={palette.wine}
+          placeholderTextColor={colors.muted}
+          selectionColor={colors.wine}
           style={[
             typeScale.body,
             {
               flex: 1,
               minHeight: multiline ? 92 : layout.touchTarget,
               paddingVertical: multiline ? spacing.xs : 0,
-              color: palette.ink,
+              color: colors.ink,
               textAlignVertical: multiline ? 'top' : 'center',
               ...(Platform.OS === 'web'
                 ? ({ outlineColor: 'transparent', outlineStyle: 'solid' } as TextStyle)
@@ -109,7 +111,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
           nativeID={supportId}
           accessibilityLiveRegion={error ? 'polite' : 'none'}
           variant="support"
-          color={error ? palette.danger : palette.muted}
+          color={error ? colors.danger : colors.muted}
         >
           {error ?? helpText}
         </AppText>

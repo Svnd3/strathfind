@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 
+import { authorizeSignInPortal, type AuthPortal } from '@/lib/auth-access';
 import { haptics } from '@/lib/haptics';
 import { createHandoffDeadline, maskPhone } from '@/lib/item-utils';
 import {
@@ -73,7 +74,7 @@ export interface ToastMessage {
 export interface SignInInput {
   email: string;
   password: string;
-  role: UserRole;
+  portal: AuthPortal;
 }
 
 export interface SignUpInput {
@@ -353,7 +354,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   }, [loadPublicState, loadRemoteState, user]);
 
   const signIn = useCallback(
-    async ({ email, password, role }: SignInInput): Promise<ActionResult<CampusUser>> => {
+    async ({ email, password, portal }: SignInInput): Promise<ActionResult<CampusUser>> => {
       if (!supabase) {
         const error = 'Accounts are unavailable until Supabase is connected.';
         showToast(error, 'warning');
@@ -378,9 +379,10 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           return { ok: false, error: message };
         }
         const signedInUser = await fetchCampusUser(supabase, data.user);
-        if (signedInUser.role !== role) {
+        const portalAccess = authorizeSignInPortal(signedInUser.role, portal);
+        if (!portalAccess.ok) {
           await discardRemoteSession(signedInUser.id);
-          const message = `This account does not have ${role} access.`;
+          const message = portalAccess.error;
           showToast(message, 'error');
           return { ok: false, error: message };
         }
@@ -469,6 +471,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         }
         const signedUpUser = data.user && data.session ? await fetchCampusUser(supabase, data.user) : null;
         if (signedUpUser) {
+          if (signedUpUser.role !== 'student') {
+            await discardRemoteSession(signedUpUser.id);
+            const message = 'Public signup creates student accounts only.';
+            showToast(message, 'error');
+            return { ok: false, error: message };
+          }
           const snapshot = await loadRemoteState(signedUpUser);
           if (!snapshot || !(await sessionMatchesUser(supabase, signedUpUser.id))) {
             throw new Error('The authenticated session changed before signup completed.');

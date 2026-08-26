@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 
-import { focusRing, layout, palette, radius, raisedShadow, spacing } from '@/constants/design';
+import { focusRing, layout, radius, raisedShadow, spacing } from '@/constants/design';
 import {
   createGooglePlacesSessionToken,
   fetchGoogleCampusLocations,
@@ -19,6 +19,7 @@ import {
   searchCampusLocations,
   type CampusLocationSuggestion,
 } from '@/lib/campus-locations';
+import { useAppTheme } from '@/theme/app-theme';
 
 import { TextField, type TextFieldProps } from './fields';
 import { AppText } from './typography';
@@ -59,6 +60,7 @@ export function CampusLocationField({
   placeholder = 'Start typing a campus place',
   ...props
 }: CampusLocationFieldProps) {
+  const { colors } = useAppTheme();
   const generatedId = useId();
   const inputId = nativeID ?? `campus-location-${generatedId}`;
   const listId = `${inputId}-suggestions`;
@@ -206,10 +208,10 @@ export function CampusLocationField({
         aria-controls={showSuggestions ? listId : undefined}
         aria-expanded={showSuggestions}
         aria-activedescendant={activeOptionId}
-        leading={<MapPin aria-hidden color={palette.muted} size={20} strokeWidth={2.1} />}
+        leading={<MapPin aria-hidden color={colors.muted} size={20} strokeWidth={2.1} />}
         trailing={
           loading ? (
-            <ActivityIndicator accessibilityLabel="Finding campus places" color={palette.wine} size="small" />
+            <ActivityIndicator accessibilityLabel="Finding campus places" color={colors.wine} size="small" />
           ) : undefined
         }
         onChangeText={(nextValue) => {
@@ -238,7 +240,14 @@ export function CampusLocationField({
           nativeID={listId}
           accessibilityLabel="Campus location suggestions"
           role={Platform.OS === 'web' ? ('listbox' as 'list') : 'list'}
-          style={styles.suggestionList}
+          style={[
+            styles.suggestionList,
+            {
+              borderColor: colors.lineSoft,
+              backgroundColor: colors.surfaceStrong,
+              ...raisedShadow('sm', colors.black),
+            },
+          ]}
         >
           {suggestions.map((suggestion, index) => {
             const active = index === resolvedActiveIndex;
@@ -256,20 +265,21 @@ export function CampusLocationField({
                 onPress={() => selectSuggestion(suggestion)}
                 style={({ pressed }) => [
                   styles.suggestion,
-                  index < suggestions.length - 1 && styles.suggestionDivider,
-                  (active || pressed) && styles.suggestionActive,
-                  active && focusRing(true),
+                  { backgroundColor: colors.surfaceStrong },
+                  index < suggestions.length - 1 && { borderBottomColor: colors.lineSoft },
+                  (active || pressed) && { backgroundColor: colors.wineSoft },
+                  active && focusRing(true, colors.wine),
                 ]}
               >
-                <View style={styles.pin}>
-                  <MapPin aria-hidden color={palette.wine} size={17} strokeWidth={2.2} />
+                <View style={[styles.pin, { backgroundColor: colors.wineSoft }]}>
+                  <MapPin aria-hidden color={colors.wine} size={17} strokeWidth={2.2} />
                 </View>
                 <View style={styles.suggestionCopy}>
                   <AppText numberOfLines={1} variant="bodyStrong">
                     {suggestion.label}
                   </AppText>
                   {suggestion.detail ? (
-                    <AppText numberOfLines={1} variant="support" color={palette.muted}>
+                    <AppText numberOfLines={1} variant="support" color={colors.muted}>
                       {suggestion.detail}
                     </AppText>
                   ) : null}
@@ -282,8 +292,8 @@ export function CampusLocationField({
             <AppText
               accessibilityLiveRegion="polite"
               variant="micro"
-              color={palette.muted}
-              style={styles.attribution}
+              color={colors.muted}
+              style={[styles.attribution, { borderTopColor: colors.lineSoft }]}
             >
               SUGGESTIONS BY GOOGLE MAPS
             </AppText>
@@ -303,10 +313,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: palette.lineSoft,
     borderRadius: radius.md,
-    backgroundColor: palette.surfaceStrong,
-    ...raisedShadow('sm'),
   },
   suggestion: {
     minHeight: layout.touchTarget,
@@ -317,15 +324,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderWidth: 2,
     borderColor: 'transparent',
-    backgroundColor: palette.surfaceStrong,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as const) : {}),
   },
   suggestionDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: palette.lineSoft,
-  },
-  suggestionActive: {
-    backgroundColor: palette.wineSoft,
   },
   pin: {
     width: 34,
@@ -334,7 +336,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.sm,
-    backgroundColor: palette.wineSoft,
   },
   suggestionCopy: {
     flex: 1,
@@ -344,7 +345,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: palette.lineSoft,
     textAlign: 'right',
   },
 });

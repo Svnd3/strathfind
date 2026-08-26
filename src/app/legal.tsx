@@ -9,7 +9,8 @@ import {
   Screen,
   Surface,
 } from '@/components/strathfind';
-import { palette, radius, spacing } from '@/constants/design';
+import { radius, spacing } from '@/constants/design';
+import { useAppTheme } from '@/theme/app-theme';
 
 interface PolicySectionProps {
   title: string;
@@ -17,17 +18,21 @@ interface PolicySectionProps {
 }
 
 function PolicySection({ title, children }: PolicySectionProps) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.section}>
       <AppText accessibilityRole="header" variant="h3">
         {title}
       </AppText>
-      <AppText color={palette.inkSoft}>{children}</AppText>
+      <AppText color={colors.inkSoft}>{children}</AppText>
     </View>
   );
 }
 
 export default function LegalScreen() {
+  const { colors } = useAppTheme();
+
   return (
     <Screen edges={['top', 'left', 'right', 'bottom']}>
       <ContentShell maxWidth={760} style={styles.shell}>
@@ -37,33 +42,33 @@ export default function LegalScreen() {
             icon={ArrowLeft}
             onPress={() => router.back()}
           />
-          <AppText color={palette.muted} variant="micro">PRODUCT POLICIES</AppText>
+          <AppText color={colors.muted} variant="micro">PRODUCT POLICIES</AppText>
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.heroIcon}>
-            <FileCheck2 color={palette.wine} size={28} strokeWidth={2} />
+          <View style={[styles.heroIcon, { backgroundColor: colors.wineSoft }]}>
+            <FileCheck2 color={colors.wine} size={28} strokeWidth={2} />
           </View>
           <View style={styles.heroCopy}>
             <AppText accessibilityRole="header" variant="h1">Terms &amp; privacy</AppText>
-            <AppText color={palette.muted}>Last updated 26 August 2026</AppText>
+            <AppText color={colors.muted}>Last updated 26 August 2026</AppText>
           </View>
         </View>
 
         <Surface padding="lg" tone="inset" style={styles.reviewNote}>
-          <ShieldCheck color={palette.wine} size={21} strokeWidth={2} />
-          <AppText color={palette.inkSoft} style={styles.flexText} variant="support">
+          <ShieldCheck color={colors.wine} size={21} strokeWidth={2} />
+          <AppText color={colors.inkSoft} style={styles.flexText} variant="support">
             These are StrathFind product terms, not legal advice. The deployment owner should obtain Kenyan legal review, including data-protection review, before launch.
           </AppText>
         </Surface>
 
-        <AppText color={palette.inkSoft}>
+        <AppText color={colors.inkSoft}>
           By creating an account or using StrathFind, you agree to these terms and acknowledge the privacy notice below.
         </AppText>
 
         <Surface padding="xl" style={styles.policyCard}>
-          <View style={styles.cardHeading}>
-            <AppText color={palette.wine} variant="micro">TERMS OF USE</AppText>
+          <View style={[styles.cardHeading, { borderBottomColor: colors.lineSoft }]}>
+            <AppText color={colors.wine} variant="micro">TERMS OF USE</AppText>
             <AppText accessibilityRole="header" variant="h2">Use StrathFind responsibly</AppText>
           </View>
 
@@ -109,8 +114,8 @@ export default function LegalScreen() {
         </Surface>
 
         <Surface padding="xl" style={styles.policyCard}>
-          <View style={styles.cardHeading}>
-            <AppText color={palette.wine} variant="micro">PRIVACY NOTICE</AppText>
+          <View style={[styles.cardHeading, { borderBottomColor: colors.lineSoft }]}>
+            <AppText color={colors.wine} variant="micro">PRIVACY NOTICE</AppText>
             <AppText accessibilityRole="header" variant="h2">How information is handled</AppText>
           </View>
 
@@ -139,7 +144,7 @@ export default function LegalScreen() {
           </PolicySection>
         </Surface>
 
-        <AppText align="center" color={palette.muted} style={styles.footer} variant="support">
+        <AppText align="center" color={colors.muted} style={styles.footer} variant="support">
           Safer reports. Private details. Public handoffs.
         </AppText>
       </ContentShell>
@@ -170,7 +175,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.wineSoft,
   },
   heroCopy: {
     flex: 1,
@@ -191,7 +195,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: palette.lineSoft,
   },
   section: {
     gap: spacing.xs,

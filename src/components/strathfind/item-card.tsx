@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import {
   Image,
   Platform,
@@ -10,13 +10,28 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { ArrowUpRight, ChevronDown, Clock3, MapPin } from 'lucide-react-native';
+import {
+  ArrowUpRight,
+  Backpack,
+  BookOpen,
+  ChevronDown,
+  CircleHelp,
+  Clock3,
+  CreditCard,
+  CupSoda,
+  KeyRound,
+  MapPin,
+  Shirt,
+  Smartphone,
+  type LucideProps,
+} from 'lucide-react-native';
 
-import { focusRing, palette, radius, raisedShadow, spacing } from '@/constants/design';
+import { radius, raisedShadow, spacing } from '@/constants/design';
 import { handoffLabel, isHandoffUrgent } from '@/lib/item-utils';
-import type { LostFoundItem } from '@/lib/types';
+import type { ItemCategory, LostFoundItem } from '@/lib/types';
+import { useAppTheme } from '@/theme/app-theme';
 
-import { CategoryArt, getCategoryLabel } from './category-art';
+import { getCategoryLabel } from './category-art';
 import { StatusPill } from './status';
 import { AppText } from './typography';
 
@@ -49,6 +64,66 @@ function formatDateTime(iso: string): string {
   }).format(date);
 }
 
+function cardFocusRing(focused: boolean, color: string): ViewStyle {
+  return focused ? { borderColor: color, borderWidth: 2 } : {};
+}
+
+const fallbackIcons: Record<ItemCategory, ComponentType<LucideProps>> = {
+  electronics: Smartphone,
+  identity: CreditCard,
+  keys: KeyRound,
+  bags: Backpack,
+  clothing: Shirt,
+  books: BookOpen,
+  bottles: CupSoda,
+  other: CircleHelp,
+};
+
+// Drawn from the vivid red and green reference cards. Near-black content keeps
+// normal-size text above WCAG AA contrast on both backgrounds.
+const fallbackTones = [
+  { background: '#FA1747', foreground: '#171013' },
+  { background: '#00A884', foreground: '#171013' },
+] as const;
+
+function fallbackToneFor(item: PublicItemCardItem) {
+  const seed = `${item.category}:${item.id}`;
+  let hash = 0;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) | 0;
+  }
+
+  return fallbackTones[Math.abs(hash) % fallbackTones.length];
+}
+
+function ItemFallbackArt({
+  hidden,
+  item,
+}: {
+  hidden: boolean;
+  item: PublicItemCardItem;
+}) {
+  const Icon = fallbackIcons[item.category];
+  const categoryLabel = getCategoryLabel(item.category);
+  const tone = fallbackToneFor(item);
+
+  return (
+    <View
+      accessibilityElementsHidden={hidden}
+      accessibilityLabel={`No photo uploaded. ${categoryLabel} illustration for ${item.title}`}
+      accessibilityRole="image"
+      accessible={!hidden}
+      aria-hidden={hidden}
+      pointerEvents="none"
+      style={[styles.mediaFill, styles.fallbackArt, { backgroundColor: tone.background }]}
+    >
+      <View aria-hidden style={[styles.fallbackHalo, { borderColor: tone.foreground }]} />
+      <Icon aria-hidden color={tone.foreground} size={104} strokeWidth={1.55} />
+    </View>
+  );
+}
+
 export function ItemCard({
   item,
   compact = false,
@@ -67,16 +142,31 @@ export function ItemCard({
   onFocus,
   ...pressableProps
 }: ItemCardProps) {
+  const { colors } = useAppTheme();
   const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
   const [focused, setFocused] = useState(false);
   const [actionFocused, setActionFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [loadedImageUri, setLoadedImageUri] = useState<string | null>(null);
+  const [failedImageUri, setFailedImageUri] = useState<string | null>(null);
   const expanded = controlledExpanded ?? internalExpanded;
   const hasOpenAction = Boolean(onOpen || legacyOnPress);
+  const shouldAttemptImage = Boolean(item.imageUri && failedImageUri !== item.imageUri);
+  const imageLoaded = Boolean(
+    shouldAttemptImage && item.imageUri && loadedImageUri === item.imageUri,
+  );
 
   // The shared time helpers only inspect kind/status/deadline fields.
   const itemForTime = item as LostFoundItem;
   const urgent = isHandoffUrgent(itemForTime, now);
+  const itemLabel = accessibilityLabel ?? `${item.kind === 'found' ? 'Found' : 'Lost'}: ${item.title}`;
+  const expandedAccessibilityLabel = [
+    itemLabel,
+    item.description.trim(),
+    `Location: ${item.location}`,
+    `Date and time: ${formatDateTime(item.foundAt)}`,
+    urgent ? handoffLabel(itemForTime, now) : '',
+  ].filter(Boolean).join('. ');
 
   const toggleExpanded = () => {
     const nextExpanded = !expanded;
@@ -96,19 +186,19 @@ export function ItemCard({
         styles.card,
         compact ? styles.cardCompact : styles.cardLarge,
         {
-          borderColor: hovered || focused ? palette.wine : palette.lineSoft,
-          backgroundColor: palette.surfaceStrong,
+          borderColor: hovered || focused ? colors.wine : colors.lineSoft,
+          backgroundColor: colors.surfaceStrong,
           opacity: disabled ? 0.55 : 1,
-          ...raisedShadow(hovered ? 'md' : 'sm'),
+          ...raisedShadow(hovered ? 'md' : 'sm', colors.black),
         },
-        focusRing(focused),
+        cardFocusRing(focused, colors.wine),
         style,
       ]}
     >
       <Pressable
         {...pressableProps}
         accessibilityHint={accessibilityHint ?? (expanded ? 'Hide item summary' : 'Show location and time')}
-        accessibilityLabel={accessibilityLabel ?? `${item.kind === 'found' ? 'Found' : 'Lost'}: ${item.title}`}
+        accessibilityLabel={expanded ? expandedAccessibilityLabel : itemLabel}
         accessibilityRole="button"
         accessibilityState={{ ...accessibilityState, disabled: Boolean(disabled), expanded }}
         disabled={disabled}
@@ -126,49 +216,55 @@ export function ItemCard({
         style={({ pressed }) => [
           styles.expandButton,
           {
-            backgroundColor: pressed ? palette.inset : 'transparent',
+            backgroundColor: pressed ? colors.inset : 'transparent',
             transform: [{ scale: pressed ? 0.992 : 1 }],
             ...(Platform.OS === 'web' ? ({ cursor: disabled ? 'default' : 'pointer' } as ViewStyle) : {}),
           },
         ]}
       >
-        <View style={[styles.media, compact ? styles.mediaCompact : styles.mediaLarge]}>
-        {item.imageUri ? (
-          <Image
-            accessibilityLabel={`Photo of ${item.title}`}
-            resizeMode="cover"
-            source={{ uri: item.imageUri }}
-            style={styles.mediaFill}
-          />
-        ) : (
-          <CategoryArt
-            category={item.category}
-            size={compact ? 192 : 216}
-            style={styles.mediaFill}
-          />
-        )}
-        <View pointerEvents="none" style={styles.statuses}>
-          <StatusPill kind={item.kind} />
-          {item.status !== 'published' ? <StatusPill status={item.status} /> : null}
-        </View>
+        <View
+          style={[
+            styles.media,
+            compact ? styles.mediaCompact : styles.mediaLarge,
+            { backgroundColor: colors.inset },
+          ]}
+        >
+          <ItemFallbackArt hidden={imageLoaded} item={item} />
+          {shouldAttemptImage && item.imageUri ? (
+            <Image
+              accessibilityElementsHidden={!imageLoaded}
+              accessibilityLabel={imageLoaded ? `Photo of ${item.title}` : undefined}
+              accessible={imageLoaded}
+              aria-hidden={!imageLoaded}
+              onError={() => setFailedImageUri(item.imageUri ?? null)}
+              onLoad={() => setLoadedImageUri(item.imageUri ?? null)}
+              resizeMode="cover"
+              source={{ uri: item.imageUri }}
+              style={[styles.mediaFill, styles.itemImage, { opacity: imageLoaded ? 1 : 0 }]}
+            />
+          ) : null}
+          <View pointerEvents="none" style={styles.statuses}>
+            <StatusPill kind={item.kind} />
+            {item.status !== 'published' ? <StatusPill status={item.status} /> : null}
+          </View>
         </View>
 
         <View style={styles.content}>
           <View style={styles.headingRow}>
             <View style={styles.headingCopy}>
-              <AppText color={palette.muted} variant="micro">
+              <AppText color={colors.muted} variant="micro">
                 {getCategoryLabel(item.category).toUpperCase()}
               </AppText>
-              <AppText numberOfLines={expanded ? 3 : 2} variant="h3">
+              <AppText color={colors.ink} numberOfLines={expanded ? 3 : 2} variant="h3">
                 {item.title}
               </AppText>
             </View>
             <View aria-hidden style={styles.disclosureCue}>
-              <AppText color={palette.wine} variant="micro">
+              <AppText color={colors.wine} variant="micro">
                 {expanded ? 'LESS' : 'DETAILS'}
               </AppText>
               <ChevronDown
-                color={palette.wine}
+                color={colors.wine}
                 size={18}
                 strokeWidth={2.4}
                 style={{ transform: [{ rotate: expanded ? '180deg' : '0deg' }] }}
@@ -177,28 +273,28 @@ export function ItemCard({
           </View>
 
           {expanded ? (
-            <View style={styles.expandedContent}>
+            <View style={[styles.expandedContent, { borderTopColor: colors.lineSoft }]}>
               {item.description.trim() ? (
-                <AppText color={palette.inkSoft} numberOfLines={3} variant="support">
+                <AppText color={colors.inkSoft} numberOfLines={3} variant="support">
                   {item.description.trim()}
                 </AppText>
               ) : null}
 
               <View style={styles.detailList}>
                 <View style={styles.detailRow}>
-                  <MapPin aria-hidden color={palette.wine} size={18} strokeWidth={2.2} />
-                  <AppText color={palette.inkSoft} style={styles.detailText} variant="support">
+                  <MapPin aria-hidden color={colors.wine} size={18} strokeWidth={2.2} />
+                  <AppText color={colors.inkSoft} style={styles.detailText} variant="support">
                     {item.location}
                   </AppText>
                 </View>
                 <View style={styles.detailRow}>
-                  <Clock3 aria-hidden color={urgent ? palette.danger : palette.wine} size={18} strokeWidth={2.2} />
-                  <AppText color={urgent ? palette.danger : palette.inkSoft} style={styles.detailText} variant="support">
+                  <Clock3 aria-hidden color={urgent ? colors.danger : colors.wine} size={18} strokeWidth={2.2} />
+                  <AppText color={urgent ? colors.danger : colors.inkSoft} style={styles.detailText} variant="support">
                     {formatDateTime(item.foundAt)}
                   </AppText>
                 </View>
                 {urgent ? (
-                  <AppText color={palette.danger} variant="micro">
+                  <AppText color={colors.danger} variant="micro">
                     {handoffLabel(itemForTime, now).toUpperCase()}
                   </AppText>
                 ) : null}
@@ -219,12 +315,12 @@ export function ItemCard({
             onPress={openItem}
             style={({ pressed }) => [
               styles.openButton,
-              { backgroundColor: pressed ? palette.winePressed : palette.wine },
-              focusRing(actionFocused),
+              { backgroundColor: pressed ? colors.primaryPressed : colors.primary },
+              cardFocusRing(actionFocused, colors.yellow),
             ]}
           >
-            <AppText color={palette.white} variant="support">View item</AppText>
-            <ArrowUpRight aria-hidden color={palette.white} size={18} strokeWidth={2.3} />
+            <AppText color={colors.onPrimary} variant="support">View item</AppText>
+            <ArrowUpRight aria-hidden color={colors.onPrimary} size={18} strokeWidth={2.3} />
           </Pressable>
         </View>
       ) : null}
@@ -256,7 +352,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     width: '100%',
     borderRadius: radius.lg,
-    backgroundColor: palette.inset,
   },
   mediaCompact: {
     height: 192,
@@ -268,6 +363,27 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: radius.lg,
+  },
+  itemImage: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  fallbackArt: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fallbackHalo: {
+    position: 'absolute',
+    width: 196,
+    height: 196,
+    right: -54,
+    bottom: -78,
+    borderRadius: radius.pill,
+    borderWidth: 28,
+    opacity: 0.14,
   },
   statuses: {
     position: 'absolute',
@@ -305,7 +421,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: palette.lineSoft,
   },
   detailList: {
     gap: spacing.sm,

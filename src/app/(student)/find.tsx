@@ -18,13 +18,14 @@ import {
   TextField,
   getCategoryLabel,
 } from '@/components/strathfind';
-import { palette, spacing } from '@/constants/design';
+import { spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
 import { filterItems } from '@/lib/item-utils';
 import { categories } from '@/lib/catalog';
 import { readPreference, writePreference } from '@/lib/preferences';
 import type { ItemCategory, ItemKind } from '@/lib/types';
 import { useAppState } from '@/state';
+import { useAppTheme } from '@/theme/app-theme';
 
 type KindFilter = 'all' | ItemKind;
 type CategoryFilter = 'all' | ItemCategory;
@@ -55,6 +56,7 @@ function savedSearchLabel(search: SavedSearch) {
 }
 
 export default function FindScreen() {
+  const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const { items, notifications } = useAppState();
   const [query, setQuery] = useState('');
@@ -111,7 +113,15 @@ export default function FindScreen() {
               icon={unread ? BellRing : Bell}
               onPress={() => router.push('/(student)/activity')}
             />
-            {unread ? <View accessibilityLabel={`${unread} unread`} style={styles.unreadDot} /> : null}
+            {unread ? (
+              <View
+                accessibilityLabel={`${unread} unread`}
+                style={[
+                  styles.unreadDot,
+                  { backgroundColor: colors.yellow, borderColor: colors.wine },
+                ]}
+              />
+            ) : null}
           </View>
         </View>
 
@@ -123,7 +133,7 @@ export default function FindScreen() {
               accessibilityHint="Search item names, colours, buildings, or categories"
               containerStyle={styles.searchField}
               label="Search"
-              leading={<Search color={palette.muted} size={20} />}
+              leading={<Search color={colors.muted} size={20} />}
               onChangeText={setQuery}
               placeholder="Item or location"
               returnKeyType="search"
@@ -158,8 +168,8 @@ export default function FindScreen() {
             ))}
           </ScrollView>
           {savedSearchOptions.length ? (
-            <View style={styles.savedBlock}>
-              <AppText color={palette.muted} variant="micro">SAVED SEARCHES</AppText>
+            <View style={[styles.savedBlock, { borderTopColor: colors.lineSoft }]}>
+              <AppText color={colors.muted} variant="micro">SAVED SEARCHES</AppText>
               <ScrollView
                 horizontal
                 contentContainerStyle={styles.chips}
@@ -211,7 +221,7 @@ export default function FindScreen() {
 const styles = StyleSheet.create({
   shell: { gap: spacing.xl, paddingTop: spacing.md },
   header: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  unreadDot: { position: 'absolute', top: 3, right: 3, width: 10, height: 10, borderRadius: 5, backgroundColor: palette.yellow, borderColor: palette.wine, borderWidth: 2 },
+  unreadDot: { position: 'absolute', top: 3, right: 3, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
   searchPanel: { gap: spacing.md },
   searchTop: { gap: spacing.md },
   searchTopWide: { flexDirection: 'row', alignItems: 'flex-start' },
@@ -219,6 +229,6 @@ const styles = StyleSheet.create({
   typeControl: { width: '100%' },
   typeControlWide: { width: 330 },
   chips: { gap: spacing.xs, paddingRight: spacing.md },
-  savedBlock: { gap: spacing.xs, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: palette.lineSoft },
+  savedBlock: { gap: spacing.xs, paddingTop: spacing.xs, borderTopWidth: 1 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, alignItems: 'stretch' },
 });

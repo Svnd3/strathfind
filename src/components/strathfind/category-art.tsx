@@ -12,8 +12,9 @@ import {
   type LucideProps,
 } from 'lucide-react-native';
 
-import { palette, radius } from '@/constants/design';
+import { radius, type AppPalette } from '@/constants/design';
 import type { ItemCategory } from '@/lib/types';
+import { useAppTheme } from '@/theme/app-theme';
 
 const categoryIcons: Record<ItemCategory, ComponentType<LucideProps>> = {
   electronics: Smartphone,
@@ -37,16 +38,18 @@ const categoryLabels: Record<ItemCategory, string> = {
   other: 'Other item',
 };
 
-const categoryColors: Record<ItemCategory, { background: string; foreground: string }> = {
-  electronics: { background: palette.blueSoft, foreground: palette.blue },
-  identity: { background: palette.warningSoft, foreground: palette.warning },
-  keys: { background: palette.wineSoft, foreground: palette.wine },
-  bags: { background: '#E5E1F2', foreground: '#473A73' },
-  clothing: { background: '#E7DDD6', foreground: '#694332' },
-  books: { background: palette.successSoft, foreground: palette.success },
-  bottles: { background: '#DCECEF', foreground: '#285A64' },
-  other: { background: palette.inset, foreground: palette.inkSoft },
-};
+function getCategoryColors(colors: AppPalette): Record<ItemCategory, { background: string; foreground: string }> {
+  return {
+    electronics: { background: colors.blueSoft, foreground: colors.blue },
+    identity: { background: colors.warningSoft, foreground: colors.warning },
+    keys: { background: colors.wineSoft, foreground: colors.wine },
+    bags: { background: colors.wineSoft, foreground: colors.wine },
+    clothing: { background: colors.warningSoft, foreground: colors.warning },
+    books: { background: colors.successSoft, foreground: colors.success },
+    bottles: { background: colors.tealSoft, foreground: colors.teal },
+    other: { background: colors.inset, foreground: colors.inkSoft },
+  };
+}
 
 export interface CategoryArtProps {
   category: ItemCategory;
@@ -56,8 +59,9 @@ export interface CategoryArtProps {
 
 /** A semantic category illustration; it is intentional UI, never a missing-image placeholder. */
 export function CategoryArt({ category, size = 104, style }: CategoryArtProps) {
+  const { colors: themeColors } = useAppTheme();
   const Icon = categoryIcons[category];
-  const colors = categoryColors[category];
+  const colors = getCategoryColors(themeColors)[category];
   const iconSize = Math.round(size * 0.42);
 
   return (

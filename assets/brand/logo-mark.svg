@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="strathfind-mark-title strathfind-mark-desc" focusable="false">
   <title id="strathfind-mark-title">StrathFind logo</title>
-  <desc id="strathfind-mark-desc">A black geometric magnifying glass with a bright yellow lens on a deep wine-red background.</desc>
-  <rect width="1024" height="1024" fill="#711C3A"/>
+  <desc id="strathfind-mark-desc">A near-black geometric magnifying glass with a bright yellow lens on a signal-red background.</desc>
+  <rect width="1024" height="1024" fill="#FA1747"/>
   <g shape-rendering="geometricPrecision">
-    <circle cx="414" cy="394" r="248" fill="#000000"/>
-    <path d="M568 548 774 754" fill="none" stroke="#000000" stroke-width="128" stroke-linecap="round"/>
-    <circle cx="414" cy="394" r="164" fill="#F2C45E"/>
+    <circle cx="414" cy="394" r="248" fill="#111113"/>
+    <path d="M568 548 774 754" fill="none" stroke="#111113" stroke-width="128" stroke-linecap="round"/>
+    <circle cx="414" cy="394" r="164" fill="#F4C44E"/>
   </g>
 </svg>

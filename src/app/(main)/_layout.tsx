@@ -2,8 +2,9 @@ import { Tabs } from 'expo-router';
 import { CircleUserRound, House, PackageCheck, Search } from 'lucide-react-native';
 import { Platform, useWindowDimensions } from 'react-native';
 
-import { palette, radius, raisedShadow, spacing } from '@/constants/design';
+import { radius, raisedShadow, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
+import { useAppTheme } from '@/theme/app-theme';
 
 const icons = {
   index: House,
@@ -14,6 +15,7 @@ const icons = {
 
 export default function MainLayout() {
   const { width } = useWindowDimensions();
+  const { colors } = useAppTheme();
   const desktop = width >= 960;
 
   return (
@@ -28,12 +30,12 @@ export default function MainLayout() {
         return {
           animation: 'fade',
           headerShown: false,
-          sceneStyle: { backgroundColor: palette.canvas },
-          tabBarActiveBackgroundColor: desktop ? palette.wineSoft : 'transparent',
-          tabBarActiveTintColor: palette.wine,
+          sceneStyle: { backgroundColor: colors.canvas },
+          tabBarActiveBackgroundColor: desktop ? colors.wineSoft : 'transparent',
+          tabBarActiveTintColor: colors.wine,
           tabBarAllowFontScaling: true,
           tabBarHideOnKeyboard: true,
-          tabBarInactiveTintColor: palette.muted,
+          tabBarInactiveTintColor: colors.muted,
           tabBarLabelPosition: desktop ? 'beside-icon' : 'below-icon',
           tabBarLabelStyle: {
             fontSize: 14,
@@ -50,18 +52,18 @@ export default function MainLayout() {
                 paddingHorizontal: spacing.sm,
                 paddingTop: spacing.lg,
                 paddingBottom: spacing.lg,
-                backgroundColor: palette.surfaceStrong,
-                borderRightColor: palette.lineSoft,
+                backgroundColor: colors.surfaceStrong,
+                borderRightColor: colors.lineSoft,
                 borderRightWidth: 1,
               }
             : {
                 height: Platform.OS === 'web' ? 76 : 86,
                 paddingTop: spacing.xs,
                 paddingBottom: Platform.OS === 'web' ? spacing.xs : spacing.md,
-                backgroundColor: palette.surfaceStrong,
-                borderTopColor: palette.lineSoft,
+                backgroundColor: colors.surfaceStrong,
+                borderTopColor: colors.lineSoft,
                 borderTopWidth: 1,
-                ...raisedShadow('sm'),
+                ...raisedShadow('sm', colors.black),
               },
           tabBarItemStyle: desktop
             ? {

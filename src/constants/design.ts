@@ -7,35 +7,108 @@ const systemFont = Platform.select({
   default: 'System',
 });
 
-export const palette = {
-  wine: '#711C3A',
-  wineDark: '#491126',
-  winePressed: '#5B1730',
-  wineSoft: '#F1E2E7',
-  yellow: '#F2C45E',
-  teal: '#215C60',
-  tealDark: '#153F43',
-  tealSoft: '#DDEBE8',
-  ink: '#241B1E',
-  inkSoft: '#574B4F',
-  muted: '#706267',
-  canvas: '#F6F1EA',
-  surface: '#FAF6F0',
-  surfaceStrong: '#FFFCF7',
-  inset: '#EDE5DC',
-  line: '#8B777E',
-  lineSoft: '#DDD0C8',
-  white: '#FFFCF7',
-  black: '#000000',
-  success: '#245D41',
-  successSoft: '#DCECE3',
+export const lightPalette = {
+  // `wine` is the accessible red accent used for text, icons, and outlines.
+  // Filled controls use the primary tokens below so foreground contrast is
+  // explicit in both themes.
+  wine: '#B10F34',
+  wineDark: '#950C2B',
+  winePressed: '#A90F31',
+  wineSoft: '#FFE1E7',
+  primary: '#C3133A',
+  primaryHover: '#A90F31',
+  primaryPressed: '#950C2B',
+  onPrimary: '#FFF9FA',
+  yellow: '#F4C44E',
+  teal: '#007A64',
+  tealDark: '#006653',
+  tealSoft: '#D7F5ED',
+  found: '#007A64',
+  foundHover: '#006653',
+  foundPressed: '#004F43',
+  onFound: '#FFFDFC',
+  cardRed: '#FA1747',
+  cardRedPressed: '#D9163B',
+  cardGreen: '#00A884',
+  cardGreenPressed: '#00856A',
+  onCardRed: '#171013',
+  onCardGreen: '#14211F',
+  ink: '#21191C',
+  inkSoft: '#50464A',
+  muted: '#675C60',
+  canvas: '#F7F4F1',
+  surface: '#FBF8F6',
+  surfaceStrong: '#FFFDFC',
+  inset: '#EEE8E6',
+  line: '#86777C',
+  lineSoft: '#DCCFD2',
+  white: '#FFFDFC',
+  black: '#111113',
+  success: '#176B4F',
+  successSoft: '#D8F0E7',
+  onSuccess: '#FFFDFC',
   warning: '#745100',
-  warningSoft: '#F5E9BC',
-  danger: '#9A213A',
-  dangerSoft: '#F5DDE3',
-  blue: '#315C78',
-  blueSoft: '#DEEAF1',
+  warningSoft: '#F6E9B7',
+  onWarning: '#FFFDFC',
+  danger: '#A60F35',
+  dangerSoft: '#FFE0E7',
+  onDanger: '#FFFDFC',
+  blue: '#285F86',
+  blueSoft: '#DDECF5',
+  onInfo: '#FFFDFC',
+  scrim: 'rgba(17, 17, 19, 0.58)',
 } as const;
+
+export type AppPalette = { [Key in keyof typeof lightPalette]: string };
+
+export const darkPalette: AppPalette = {
+  wine: '#FF667F',
+  wineDark: '#FF8A9E',
+  winePressed: '#A60D30',
+  wineSoft: '#401522',
+  primary: '#C3133A',
+  primaryHover: '#D81B45',
+  primaryPressed: '#950C2B',
+  onPrimary: '#FFF9FA',
+  yellow: '#F4C44E',
+  teal: '#35C9AC',
+  tealDark: '#72E0C9',
+  tealSoft: '#123B34',
+  found: '#00A884',
+  foundHover: '#00BFA5',
+  foundPressed: '#00856A',
+  onFound: '#14211F',
+  cardRed: '#FA1747',
+  cardRedPressed: '#D9163B',
+  cardGreen: '#00A884',
+  cardGreenPressed: '#00856A',
+  onCardRed: '#171013',
+  onCardGreen: '#14211F',
+  ink: '#F7F1F3',
+  inkSoft: '#D8CDD1',
+  muted: '#BDAFB4',
+  canvas: '#111113',
+  surface: '#19191C',
+  surfaceStrong: '#222226',
+  inset: '#2D2D32',
+  line: '#95858B',
+  lineSoft: '#4B4145',
+  white: '#FFF9FA',
+  black: '#111113',
+  success: '#72D7AD',
+  successSoft: '#153A2D',
+  onSuccess: '#111113',
+  warning: '#F4D078',
+  warningSoft: '#40330F',
+  onWarning: '#111113',
+  danger: '#FF7188',
+  dangerSoft: '#481522',
+  onDanger: '#111113',
+  blue: '#83BDE2',
+  blueSoft: '#16364A',
+  onInfo: '#111113',
+  scrim: 'rgba(0, 0, 0, 0.72)',
+};
 
 export const spacing = {
   xxs: 4,
@@ -78,7 +151,18 @@ export const layout = {
   touchTarget: 48,
 } as const;
 
-export function raisedShadow(level: 'sm' | 'md' | 'lg' = 'md'): ViewStyle {
+function withOpacity(color: string, opacity: number): string {
+  const hex = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color);
+  if (!hex) return color;
+
+  const [, red, green, blue] = hex;
+  return `rgba(${Number.parseInt(red, 16)}, ${Number.parseInt(green, 16)}, ${Number.parseInt(blue, 16)}, ${opacity})`;
+}
+
+export function raisedShadow(
+  level: 'sm' | 'md' | 'lg' = 'md',
+  shadowColor: string = '#5B3A44',
+): ViewStyle {
   const values = {
     sm: { offset: 3, blur: 10, opacity: 0.09, elevation: 2 },
     md: { offset: 8, blur: 24, opacity: 0.12, elevation: 5 },
@@ -87,12 +171,12 @@ export function raisedShadow(level: 'sm' | 'md' | 'lg' = 'md'): ViewStyle {
 
   if (Platform.OS === 'web') {
     return {
-      boxShadow: `0 ${values.offset}px ${values.blur}px rgba(91, 58, 68, ${values.opacity})`,
+      boxShadow: `0 ${values.offset}px ${values.blur}px ${withOpacity(shadowColor, values.opacity)}`,
     } as ViewStyle;
   }
 
   return {
-    shadowColor: '#5B3A44',
+    shadowColor,
     shadowOffset: { width: 0, height: values.offset },
     shadowOpacity: values.opacity,
     shadowRadius: values.blur / 2,
@@ -100,10 +184,10 @@ export function raisedShadow(level: 'sm' | 'md' | 'lg' = 'md'): ViewStyle {
   };
 }
 
-export function focusRing(focused: boolean): ViewStyle {
+export function focusRing(focused: boolean, color: string = lightPalette.wine): ViewStyle {
   if (!focused) return {};
   return {
-    borderColor: palette.wine,
+    borderColor: color,
     borderWidth: 2,
   };
 }
