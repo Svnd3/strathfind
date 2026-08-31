@@ -310,7 +310,7 @@ function createStyles(colors: AppPalette) {
       height: 26,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: radius.md,
+      borderRadius: radius.sm,
       borderWidth: 2,
       borderColor: colors.line,
       backgroundColor: colors.surfaceStrong,

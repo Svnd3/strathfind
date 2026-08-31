@@ -18,12 +18,11 @@ import { useAppTheme } from '@/theme/app-theme';
 
 export default function HomeScreen() {
   const params = useLocalSearchParams<{ help?: string }>();
-  const { height, width } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const { colors } = useAppTheme();
   const [helpOpen, setHelpOpen] = useState(false);
   const [focusedAction, setFocusedAction] = useState<'lost' | 'found' | null>(null);
   const compact = width < 620;
-  const compactActionHeight = Math.max(164, Math.min(208, Math.floor((height - 220) / 2)));
 
   useEffect(() => {
     if (params.help !== '1') return;
@@ -53,7 +52,6 @@ export default function HomeScreen() {
           <View style={[styles.actions, compact && styles.actionsCompact]}>
             <HomeAction
               compact={compact}
-              compactHeight={compactActionHeight}
               focused={focusedAction === 'lost'}
               icon={Search}
               label="LOST?"
@@ -64,7 +62,6 @@ export default function HomeScreen() {
             />
             <HomeAction
               compact={compact}
-              compactHeight={compactActionHeight}
               focused={focusedAction === 'found'}
               icon={PackageCheck}
               label="FOUND?"
@@ -120,7 +117,6 @@ export default function HomeScreen() {
 
 function HomeAction({
   compact,
-  compactHeight,
   focused,
   icon: Icon,
   label,
@@ -130,7 +126,6 @@ function HomeAction({
   tone,
 }: {
   compact: boolean;
-  compactHeight: number;
   focused: boolean;
   icon: typeof Search;
   label: string;
@@ -156,7 +151,6 @@ function HomeAction({
         compact && styles.actionCompact,
         {
           backgroundColor: pressed || hovered ? pressedBackground : background,
-          ...(compact ? { height: compactHeight } : {}),
           transform: [{ scale: pressed ? 0.985 : 1 }],
           ...raisedShadow(hovered ? 'lg' : 'md', colors.black),
           ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as ViewStyle) : {}),
