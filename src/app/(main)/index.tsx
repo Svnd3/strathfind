@@ -18,11 +18,12 @@ import { useAppTheme } from '@/theme/app-theme';
 
 export default function HomeScreen() {
   const params = useLocalSearchParams<{ help?: string }>();
-  const { width } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const { colors } = useAppTheme();
   const [helpOpen, setHelpOpen] = useState(false);
   const [focusedAction, setFocusedAction] = useState<'lost' | 'found' | null>(null);
   const compact = width < 620;
+  const compactActionHeight = Math.max(164, Math.min(208, Math.floor((height - 220) / 2)));
 
   useEffect(() => {
     if (params.help !== '1') return;
@@ -48,9 +49,11 @@ export default function HomeScreen() {
           <View aria-hidden style={styles.topbarSpacer} />
         </View>
 
-        <View style={styles.stage}>
+        <View style={[styles.stage, compact && styles.stageCompact]}>
           <View style={[styles.actions, compact && styles.actionsCompact]}>
             <HomeAction
+              compact={compact}
+              compactHeight={compactActionHeight}
               focused={focusedAction === 'lost'}
               icon={Search}
               label="LOST?"
@@ -60,6 +63,8 @@ export default function HomeScreen() {
               tone="lost"
             />
             <HomeAction
+              compact={compact}
+              compactHeight={compactActionHeight}
               focused={focusedAction === 'found'}
               icon={PackageCheck}
               label="FOUND?"
@@ -114,6 +119,8 @@ export default function HomeScreen() {
 }
 
 function HomeAction({
+  compact,
+  compactHeight,
   focused,
   icon: Icon,
   label,
@@ -122,6 +129,8 @@ function HomeAction({
   onPress,
   tone,
 }: {
+  compact: boolean;
+  compactHeight: number;
   focused: boolean;
   icon: typeof Search;
   label: string;
@@ -144,19 +153,21 @@ function HomeAction({
       onPress={onPress}
       style={({ hovered, pressed }) => [
         styles.action,
+        compact && styles.actionCompact,
         {
           backgroundColor: pressed || hovered ? pressedBackground : background,
+          ...(compact ? { height: compactHeight } : {}),
           transform: [{ scale: pressed ? 0.985 : 1 }],
-          ...raisedShadow('md', colors.black),
+          ...raisedShadow(hovered ? 'lg' : 'md', colors.black),
           ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as ViewStyle) : {}),
         },
         focusRing(focused, foreground),
       ]}
     >
-      <View style={[styles.actionIcon, { backgroundColor: colors.yellow }]}>
+      <View style={[styles.actionIcon, compact && styles.actionIconCompact, { backgroundColor: colors.yellow }]}>
         <Icon aria-hidden color={colors.black} size={28} strokeWidth={2.4} />
       </View>
-      <AppText color={foreground} style={styles.actionLabel}>{label}</AppText>
+      <AppText color={foreground} style={[styles.actionLabel, compact && styles.actionLabelCompact]}>{label}</AppText>
     </Pressable>
   );
 }
@@ -185,8 +196,9 @@ const styles = StyleSheet.create({
   },
   topbarSpacer: { width: 48, height: 48 },
   stage: { flex: 1, justifyContent: 'center', paddingVertical: spacing.xl },
+  stageCompact: { paddingVertical: spacing.sm },
   actions: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: spacing.lg },
-  actionsCompact: { flexDirection: 'column', gap: spacing.md },
+  actionsCompact: { flexDirection: 'column', alignItems: 'stretch', gap: spacing.sm },
   action: {
     flex: 1,
     minWidth: 0,
@@ -196,6 +208,14 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     borderRadius: 44,
   },
+  actionCompact: {
+    flex: 0,
+    width: '100%',
+    maxWidth: '100%',
+    minHeight: 164,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+  },
   actionIcon: {
     width: 56,
     height: 56,
@@ -203,12 +223,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.lg,
   },
+  actionIconCompact: { width: 48, height: 48, borderRadius: radius.md },
   actionLabel: {
     fontSize: 48,
     lineHeight: 52,
     fontWeight: '800',
     letterSpacing: -1.5,
   },
+  actionLabelCompact: { fontSize: 38, lineHeight: 42, letterSpacing: -1 },
   modalRoot: {
     flex: 1,
     alignItems: 'center',

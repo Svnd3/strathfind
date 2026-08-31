@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Bell, Building2, Clock3, LockKeyhole, LogOut, Smartphone } from 'lucide-react-native';
 import { useEffect, useState, type ComponentType } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import type { LucideProps } from 'lucide-react-native';
 
 import {
@@ -13,6 +13,7 @@ import {
   SectionHeading,
   StatusPill,
   Surface,
+  WideSwitch,
 } from '@/components/strathfind';
 import { radius, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
@@ -154,7 +155,7 @@ function SettingRow({
         <AppText variant="bodyStrong">{label}</AppText>
         <AppText color={colors.muted} variant="support">{copy}</AppText>
       </View>
-      <Switch
+      <WideSwitch
         accessibilityLabel={label}
         hitSlop={8}
         onValueChange={onValueChange}

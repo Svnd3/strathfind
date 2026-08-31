@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Check } from 'lucide-react-native';
 
-import { focusRing, layout, radius, spacing } from '@/constants/design';
+import { focusRing, hoverShadow, layout, radius, spacing } from '@/constants/design';
 import { useAppTheme } from '@/theme/app-theme';
 
 import { AppText } from './typography';
@@ -59,6 +59,7 @@ export function Chip({
               ? colors.wineSoft
               : colors.surfaceStrong,
           opacity: disabled ? 0.45 : 1,
+          ...hoverShadow(hovered && !disabled, colors.black),
           ...(Platform.OS === 'web' ? ({ cursor: disabled ? 'not-allowed' : 'pointer' } as ViewStyle) : {}),
         },
         focusRing(focused, selected ? colors.yellow : colors.wine),
@@ -125,13 +126,9 @@ function SegmentButton<T extends string>({ option, selected, onChange }: Segment
               : colors.surfaceStrong,
           borderColor: selected ? colors.primaryPressed : colors.line,
           borderWidth: selected ? 2 : 1,
+          ...hoverShadow(hovered, colors.black),
           ...(Platform.OS === 'web'
-            ? ({
-                cursor: 'pointer',
-                boxShadow: focused
-                  ? `0 0 0 2px ${colors.surfaceStrong}, 0 0 0 4px ${colors.wine}`
-                  : 'none',
-              } as ViewStyle)
+            ? ({ cursor: 'pointer' } as ViewStyle)
             : focused
               ? { borderColor: colors.yellow, borderWidth: 3 }
               : {}),

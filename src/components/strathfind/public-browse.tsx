@@ -3,7 +3,7 @@ import { Filter, PackageOpen, Plus, Search, X } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { radius, raisedShadow, spacing } from '@/constants/design';
+import { layout, radius, raisedShadow, spacing } from '@/constants/design';
 import { filterItems } from '@/lib/item-utils';
 import { categories } from '@/lib/catalog';
 import type { ItemCategory, ItemKind } from '@/lib/types';
@@ -29,11 +29,18 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const columns = width >= 1280 ? 3 : width >= 720 ? 2 : 1;
+  const narrowCards = width < 640;
   const title = kind === 'lost' ? 'Lost' : 'Found';
   const filtered = useMemo(
     () => filterItems(items, query, kind, category).filter((item) => item.status !== 'returned'),
     [category, items, kind, query],
+  );
+  const rows = useMemo(
+    () => Array.from(
+      { length: Math.ceil(filtered.length / 2) },
+      (_, rowIndex) => filtered.slice(rowIndex * 2, rowIndex * 2 + 2),
+    ),
+    [filtered],
   );
 
   const openItem = (id: string) => {
@@ -91,14 +98,20 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
 
         {filtered.length ? (
           <View style={styles.grid}>
-            {filtered.map((item) => (
-              <ItemCard
-                compact={columns > 1}
-                item={item}
-                key={item.id}
-                onOpen={() => openItem(item.id)}
-                style={{ width: columns === 1 ? '100%' : columns === 2 ? '48.8%' : '32%' }}
-              />
+            {rows.map((row) => (
+              <View key={row[0].id} style={styles.gridRow}>
+                {row.map((item) => (
+                  <ItemCard
+                    compact={width < 900}
+                    item={item}
+                    key={item.id}
+                    narrow={narrowCards}
+                    onOpen={() => openItem(item.id)}
+                    style={styles.gridCard}
+                  />
+                ))}
+                {row.length === 1 ? <View aria-hidden style={styles.gridSpacer} /> : null}
+              </View>
             ))}
           </View>
         ) : (
@@ -169,8 +182,15 @@ const styles = StyleSheet.create({
   heading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: spacing.md },
   searchRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
   search: { flex: 1, minWidth: 0 },
-  filterButton: { marginBottom: 0 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: spacing.md },
+  filterButton: {
+    width: layout.controlHeight,
+    height: layout.controlHeight,
+    marginBottom: 0,
+  },
+  grid: { gap: spacing.sm },
+  gridRow: { flexDirection: 'row', alignItems: 'stretch', gap: spacing.sm },
+  gridCard: { flex: 1, minWidth: 0, alignSelf: 'stretch' },
+  gridSpacer: { flex: 1, minWidth: 0 },
   modalRoot: {
     flex: 1,
     alignItems: 'center',

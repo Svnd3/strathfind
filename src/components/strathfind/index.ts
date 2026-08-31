@@ -12,3 +12,4 @@ export * from './selection';
 export * from './status';
 export * from './surface';
 export * from './typography';
+export * from './wide-switch';

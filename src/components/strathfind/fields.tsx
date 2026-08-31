@@ -9,7 +9,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { layout, radius, spacing, type as typeScale } from '@/constants/design';
+import { hoverShadow, layout, radius, spacing, type as typeScale } from '@/constants/design';
 import { useAppTheme } from '@/theme/app-theme';
 
 import { AppText } from './typography';
@@ -43,6 +43,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
 ) {
   const { colors } = useAppTheme();
   const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const generatedId = useId();
   const inputId = props.nativeID ?? `field-${generatedId}`;
   const supportId = `${inputId}-support`;
@@ -61,10 +62,11 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
           paddingHorizontal: spacing.md,
           paddingVertical: multiline ? spacing.sm : 0,
           borderRadius: radius.md,
-          borderWidth: focused ? 2 : 1,
-          borderColor: error ? colors.danger : focused ? colors.wine : colors.line,
+          borderWidth: 1,
+          borderColor: error ? colors.danger : focused ? colors.inkSoft : colors.line,
           backgroundColor: editable ? colors.surfaceStrong : colors.inset,
           opacity: editable ? 1 : 0.65,
+          ...hoverShadow((hovered || focused) && editable, colors.black),
         }}
       >
         {leading ? <View style={{ marginTop: multiline ? 2 : 0 }}>{leading}</View> : null}
@@ -87,12 +89,21 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
             setFocused(true);
             onFocus?.(event);
           }}
+          onPointerEnter={(event) => {
+            setHovered(true);
+            props.onPointerEnter?.(event);
+          }}
+          onPointerLeave={(event) => {
+            setHovered(false);
+            props.onPointerLeave?.(event);
+          }}
           placeholderTextColor={colors.muted}
           selectionColor={colors.wine}
           style={[
             typeScale.body,
             {
               flex: 1,
+              minWidth: 0,
               minHeight: multiline ? 92 : layout.touchTarget,
               paddingVertical: multiline ? spacing.xs : 0,
               color: colors.ink,

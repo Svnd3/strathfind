@@ -1,8 +1,10 @@
 import { useState, type ComponentType } from 'react';
 import {
   Image,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
   type GestureResponderEvent,
@@ -14,15 +16,16 @@ import {
   ArrowUpRight,
   Backpack,
   BookOpen,
-  ChevronDown,
   CircleHelp,
   Clock3,
   CreditCard,
   CupSoda,
   KeyRound,
   MapPin,
+  Maximize2,
   Shirt,
   Smartphone,
+  X,
   type LucideProps,
 } from 'lucide-react-native';
 
@@ -31,6 +34,7 @@ import { handoffLabel, isHandoffUrgent } from '@/lib/item-utils';
 import type { ItemCategory, LostFoundItem } from '@/lib/types';
 import { useAppTheme } from '@/theme/app-theme';
 
+import { IconButton, PrimaryButton } from './buttons';
 import { getCategoryLabel } from './category-art';
 import { StatusPill } from './status';
 import { AppText } from './typography';
@@ -43,9 +47,11 @@ export interface ItemCardProps extends Omit<PressableProps, 'children' | 'style'
   /** Public-safe item data. Full holder contact is deliberately not accepted. */
   item: PublicItemCardItem;
   compact?: boolean;
+  /** Optimise the card for a narrow two-column phone grid. */
+  narrow?: boolean;
   now?: Date;
   style?: StyleProp<ViewStyle>;
-  /** Control the quick-view disclosure from a parent when needed. */
+  /** Control the quick-view dialog from a parent when needed. */
   expanded?: boolean;
   defaultExpanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -65,7 +71,7 @@ function formatDateTime(iso: string): string {
 }
 
 function cardFocusRing(focused: boolean, color: string): ViewStyle {
-  return focused ? { borderColor: color, borderWidth: 2 } : {};
+  return focused && Platform.OS !== 'web' ? { borderColor: color, borderWidth: 2 } : {};
 }
 
 const fallbackIcons: Record<ItemCategory, ComponentType<LucideProps>> = {
@@ -100,9 +106,11 @@ function fallbackToneFor(item: PublicItemCardItem) {
 function ItemFallbackArt({
   hidden,
   item,
+  narrow,
 }: {
   hidden: boolean;
   item: PublicItemCardItem;
+  narrow: boolean;
 }) {
   const Icon = fallbackIcons[item.category];
   const categoryLabel = getCategoryLabel(item.category);
@@ -118,8 +126,15 @@ function ItemFallbackArt({
       pointerEvents="none"
       style={[styles.mediaFill, styles.fallbackArt, { backgroundColor: tone.background }]}
     >
-      <View aria-hidden style={[styles.fallbackHalo, { borderColor: tone.foreground }]} />
-      <Icon aria-hidden color={tone.foreground} size={104} strokeWidth={1.55} />
+      <View
+        aria-hidden
+        style={[
+          styles.fallbackHalo,
+          narrow && styles.fallbackHaloNarrow,
+          { borderColor: tone.foreground },
+        ]}
+      />
+      <Icon aria-hidden color={tone.foreground} size={narrow ? 56 : 104} strokeWidth={1.55} />
     </View>
   );
 }
@@ -127,6 +142,7 @@ function ItemFallbackArt({
 export function ItemCard({
   item,
   compact = false,
+  narrow = false,
   now = new Date(),
   style,
   expanded: controlledExpanded,
@@ -145,7 +161,6 @@ export function ItemCard({
   const { colors } = useAppTheme();
   const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
   const [focused, setFocused] = useState(false);
-  const [actionFocused, setActionFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [loadedImageUri, setLoadedImageUri] = useState<string | null>(null);
   const [failedImageUri, setFailedImageUri] = useState<string | null>(null);
@@ -159,77 +174,40 @@ export function ItemCard({
   // The shared time helpers only inspect kind/status/deadline fields.
   const itemForTime = item as LostFoundItem;
   const urgent = isHandoffUrgent(itemForTime, now);
-  const itemLabel = accessibilityLabel ?? `${item.kind === 'found' ? 'Found' : 'Lost'}: ${item.title}`;
-  const expandedAccessibilityLabel = [
-    itemLabel,
-    item.description.trim(),
-    `Location: ${item.location}`,
-    `Date and time: ${formatDateTime(item.foundAt)}`,
-    urgent ? handoffLabel(itemForTime, now) : '',
-  ].filter(Boolean).join('. ');
 
-  const toggleExpanded = () => {
-    const nextExpanded = !expanded;
+  const setExpanded = (nextExpanded: boolean) => {
     if (controlledExpanded === undefined) setInternalExpanded(nextExpanded);
     onExpandedChange?.(nextExpanded);
   };
 
+  const openDetails = () => setExpanded(true);
+  const closeDetails = () => setExpanded(false);
+
   const openItem = (event: GestureResponderEvent) => {
     event.stopPropagation();
+    closeDetails();
     if (onOpen) onOpen();
     else legacyOnPress?.(event);
   };
 
-  return (
-    <View
-      style={[
-        styles.card,
-        compact ? styles.cardCompact : styles.cardLarge,
-        {
-          borderColor: hovered || focused ? colors.wine : colors.lineSoft,
-          backgroundColor: colors.surfaceStrong,
-          opacity: disabled ? 0.55 : 1,
-          ...raisedShadow(hovered ? 'md' : 'sm', colors.black),
-        },
-        cardFocusRing(focused, colors.wine),
-        style,
-      ]}
-    >
-      <Pressable
-        {...pressableProps}
-        accessibilityHint={accessibilityHint ?? (expanded ? 'Hide item summary' : 'Show location and time')}
-        accessibilityLabel={expanded ? expandedAccessibilityLabel : itemLabel}
-        accessibilityRole="button"
-        accessibilityState={{ ...accessibilityState, disabled: Boolean(disabled), expanded }}
-        disabled={disabled}
-        onBlur={(event) => {
-          setFocused(false);
-          onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          onFocus?.(event);
-        }}
-        onHoverIn={() => setHovered(true)}
-        onHoverOut={() => setHovered(false)}
-        onPress={toggleExpanded}
-        style={({ pressed }) => [
-          styles.expandButton,
-          {
-            backgroundColor: pressed ? colors.inset : 'transparent',
-            transform: [{ scale: pressed ? 0.992 : 1 }],
-            ...(Platform.OS === 'web' ? ({ cursor: disabled ? 'default' : 'pointer' } as ViewStyle) : {}),
-          },
+  const renderMedia = (inModal = false) => {
+    const useNarrowMedia = narrow && !inModal;
+
+    return (
+      <View
+        style={[
+          styles.media,
+          inModal
+            ? styles.modalMedia
+            : useNarrowMedia
+              ? styles.mediaNarrow
+              : compact
+                ? styles.mediaCompact
+                : styles.mediaLarge,
+          { backgroundColor: colors.inset },
         ]}
       >
-        <View
-          style={[
-            styles.media,
-            compact ? styles.mediaCompact : styles.mediaLarge,
-            { backgroundColor: colors.inset },
-          ]}
-        >
-          <ItemFallbackArt hidden={imageLoaded} item={item} />
+          <ItemFallbackArt hidden={imageLoaded} item={item} narrow={useNarrowMedia} />
           {shouldAttemptImage && item.imageUri ? (
             <Image
               accessibilityElementsHidden={!imageLoaded}
@@ -243,88 +221,231 @@ export function ItemCard({
               style={[styles.mediaFill, styles.itemImage, { opacity: imageLoaded ? 1 : 0 }]}
             />
           ) : null}
-          <View pointerEvents="none" style={styles.statuses}>
-            <StatusPill kind={item.kind} />
-            {item.status !== 'published' ? <StatusPill status={item.status} /> : null}
-          </View>
-        </View>
-
-        <View style={styles.content}>
-          <View style={styles.headingRow}>
-            <View style={styles.headingCopy}>
-              <AppText color={colors.muted} variant="micro">
-                {getCategoryLabel(item.category).toUpperCase()}
-              </AppText>
-              <AppText color={colors.ink} numberOfLines={expanded ? 3 : 2} variant="h3">
-                {item.title}
-              </AppText>
-            </View>
-            <View aria-hidden style={styles.disclosureCue}>
-              <AppText color={colors.wine} variant="micro">
-                {expanded ? 'LESS' : 'DETAILS'}
-              </AppText>
-              <ChevronDown
-                color={colors.wine}
-                size={18}
-                strokeWidth={2.4}
-                style={{ transform: [{ rotate: expanded ? '180deg' : '0deg' }] }}
+          <View
+            pointerEvents="none"
+            style={[styles.statuses, useNarrowMedia && styles.statusesNarrow]}
+          >
+            <StatusPill
+              kind={item.kind}
+              style={useNarrowMedia ? styles.statusPillNarrow : undefined}
+            />
+            {item.status !== 'published' ? (
+              <StatusPill
+                status={item.status}
+                style={useNarrowMedia ? styles.statusPillNarrow : undefined}
               />
-            </View>
+            ) : null}
           </View>
-
-          {expanded ? (
-            <View style={[styles.expandedContent, { borderTopColor: colors.lineSoft }]}>
-              {item.description.trim() ? (
-                <AppText color={colors.inkSoft} numberOfLines={3} variant="support">
-                  {item.description.trim()}
-                </AppText>
-              ) : null}
-
-              <View style={styles.detailList}>
-                <View style={styles.detailRow}>
-                  <MapPin aria-hidden color={colors.wine} size={18} strokeWidth={2.2} />
-                  <AppText color={colors.inkSoft} style={styles.detailText} variant="support">
-                    {item.location}
-                  </AppText>
-                </View>
-                <View style={styles.detailRow}>
-                  <Clock3 aria-hidden color={urgent ? colors.danger : colors.wine} size={18} strokeWidth={2.2} />
-                  <AppText color={urgent ? colors.danger : colors.inkSoft} style={styles.detailText} variant="support">
-                    {formatDateTime(item.foundAt)}
-                  </AppText>
-                </View>
-                {urgent ? (
-                  <AppText color={colors.danger} variant="micro">
-                    {handoffLabel(itemForTime, now).toUpperCase()}
-                  </AppText>
-                ) : null}
-              </View>
+          {useNarrowMedia ? (
+            <View
+              aria-hidden
+              pointerEvents="none"
+              style={[
+                styles.narrowDisclosure,
+                { backgroundColor: colors.surfaceStrong, borderColor: colors.lineSoft },
+              ]}
+            >
+              <Maximize2 color={colors.wine} size={16} strokeWidth={2.4} />
             </View>
           ) : null}
-        </View>
-      </Pressable>
+      </View>
+    );
+  };
 
-      {expanded && hasOpenAction ? (
-        <View style={styles.openActionWrap}>
-          <Pressable
-            accessibilityLabel={`View full details for ${item.title}`}
-            accessibilityRole="button"
-            disabled={disabled}
-            onBlur={() => setActionFocused(false)}
-            onFocus={() => setActionFocused(true)}
-            onPress={openItem}
-            style={({ pressed }) => [
-              styles.openButton,
-              { backgroundColor: pressed ? colors.primaryPressed : colors.primary },
-              cardFocusRing(actionFocused, colors.yellow),
+  return (
+    <>
+      <View
+        style={[
+          styles.card,
+          narrow ? styles.cardNarrow : compact ? styles.cardCompact : styles.cardLarge,
+          {
+            borderColor: colors.lineSoft,
+            backgroundColor: colors.surfaceStrong,
+            opacity: disabled ? 0.55 : 1,
+            ...raisedShadow(hovered ? 'md' : 'sm', colors.black),
+          },
+          cardFocusRing(focused, colors.wine),
+          style,
+        ]}
+      >
+        <Pressable
+          {...pressableProps}
+          accessibilityHint={accessibilityHint ?? 'Shows item details in a dialog'}
+          accessibilityLabel={
+            accessibilityLabel ?? `Open details for ${item.kind} item: ${item.title}`
+          }
+          accessibilityRole="button"
+          accessibilityState={{ ...accessibilityState, disabled: Boolean(disabled), expanded }}
+          aria-haspopup="dialog"
+          disabled={disabled}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          onHoverIn={() => setHovered(true)}
+          onHoverOut={() => setHovered(false)}
+          onPress={openDetails}
+          style={({ pressed }) => [
+            styles.expandButton,
+            narrow && styles.expandButtonNarrow,
+            {
+              backgroundColor: pressed ? colors.inset : 'transparent',
+              transform: [{ scale: pressed ? 0.992 : 1 }],
+              ...(Platform.OS === 'web'
+                ? ({ cursor: disabled ? 'default' : 'pointer' } as ViewStyle)
+                : {}),
+            },
+          ]}
+        >
+          {renderMedia()}
+
+          <View style={[styles.content, narrow && styles.contentNarrow]}>
+            <View style={styles.headingRow}>
+              <View style={styles.headingCopy}>
+                <AppText color={colors.muted} numberOfLines={1} variant="micro">
+                  {getCategoryLabel(item.category).toUpperCase()}
+                </AppText>
+                <AppText
+                  color={colors.ink}
+                  numberOfLines={2}
+                  variant={narrow ? 'bodyStrong' : 'h3'}
+                >
+                  {item.title}
+                </AppText>
+              </View>
+              {!narrow ? (
+                <View aria-hidden style={styles.disclosureCue}>
+                  <AppText color={colors.wine} variant="micro">
+                    DETAILS
+                  </AppText>
+                  <Maximize2 color={colors.wine} size={18} strokeWidth={2.4} />
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </Pressable>
+      </View>
+
+      <Modal
+        animationType="fade"
+        aria-label={`Item details: ${item.title}`}
+        onRequestClose={closeDetails}
+        transparent
+        visible={expanded}
+      >
+        <View style={[styles.modalRoot, { backgroundColor: colors.scrim }]}>
+          <View
+            accessibilityViewIsModal
+            onAccessibilityEscape={closeDetails}
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: colors.surfaceStrong,
+                borderColor: colors.lineSoft,
+                ...raisedShadow('lg', colors.black),
+              },
             ]}
           >
-            <AppText color={colors.onPrimary} variant="support">View item</AppText>
-            <ArrowUpRight aria-hidden color={colors.onPrimary} size={18} strokeWidth={2.3} />
-          </Pressable>
+            <ScrollView
+              accessibilityLabel={`Scrollable details for ${item.title}`}
+              contentContainerStyle={styles.modalScrollContent}
+              onAccessibilityEscape={closeDetails}
+              showsVerticalScrollIndicator={false}
+              style={styles.modalScroll}
+            >
+              <View style={styles.modalHeading}>
+                <View style={styles.modalHeadingCopy}>
+                  <AppText color={colors.muted} variant="micro">
+                    {getCategoryLabel(item.category).toUpperCase()}
+                  </AppText>
+                  <AppText accessibilityRole="header" color={colors.ink} variant="h2">
+                    {item.title}
+                  </AppText>
+                </View>
+                <IconButton
+                  accessibilityLabel={`Close details for ${item.title}`}
+                  icon={X}
+                  onAccessibilityEscape={closeDetails}
+                  onPress={closeDetails}
+                />
+              </View>
+
+              <View style={styles.modalBody}>
+                {renderMedia(true)}
+
+                <View style={styles.modalDetails}>
+                  {item.description.trim() ? (
+                    <AppText color={colors.inkSoft} variant="body">
+                      {item.description.trim()}
+                    </AppText>
+                  ) : null}
+
+                  <View style={styles.detailList}>
+                    <View style={styles.detailRow}>
+                      <MapPin aria-hidden color={colors.wine} size={20} strokeWidth={2.2} />
+                      <AppText color={colors.inkSoft} style={styles.detailText} variant="body">
+                        {item.location}
+                      </AppText>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Clock3
+                        aria-hidden
+                        color={urgent ? colors.danger : colors.wine}
+                        size={20}
+                        strokeWidth={2.2}
+                      />
+                      <AppText
+                        color={urgent ? colors.danger : colors.inkSoft}
+                        style={styles.detailText}
+                        variant="body"
+                      >
+                        {formatDateTime(item.foundAt)}
+                      </AppText>
+                    </View>
+                    {urgent ? (
+                      <AppText color={colors.danger} variant="micro">
+                        {handoffLabel(itemForTime, now).toUpperCase()}
+                      </AppText>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+
+            {hasOpenAction ? (
+              <View style={[styles.modalFooter, { borderTopColor: colors.lineSoft }]}>
+                <PrimaryButton
+                  accessibilityLabel={`View full details for ${item.title}`}
+                  disabled={disabled}
+                  fullWidth
+                  icon={ArrowUpRight}
+                  iconPosition="right"
+                  onAccessibilityEscape={closeDetails}
+                  onPress={openItem}
+                >
+                  View item
+                </PrimaryButton>
+              </View>
+            ) : null}
+          </View>
+
+          <Pressable
+            accessibilityElementsHidden
+            accessible={false}
+            aria-hidden
+            focusable={false}
+            importantForAccessibility="no-hide-descendants"
+            onPress={closeDetails}
+            style={[StyleSheet.absoluteFill, styles.modalBackdrop]}
+            tabIndex={-1}
+          />
         </View>
-      ) : null}
-    </View>
+      </Modal>
+    </>
   );
 }
 
@@ -340,12 +461,18 @@ const styles = StyleSheet.create({
   cardCompact: {
     minHeight: 312,
   },
+  cardNarrow: {
+    minHeight: 0,
+  },
   cardLarge: {
     minHeight: 344,
   },
   expandButton: {
     width: '100%',
     borderRadius: radius.lg,
+  },
+  expandButtonNarrow: {
+    flex: 1,
   },
   media: {
     position: 'relative',
@@ -355,6 +482,9 @@ const styles = StyleSheet.create({
   },
   mediaCompact: {
     height: 192,
+  },
+  mediaNarrow: {
+    aspectRatio: 1,
   },
   mediaLarge: {
     height: 216,
@@ -385,6 +515,13 @@ const styles = StyleSheet.create({
     borderWidth: 28,
     opacity: 0.14,
   },
+  fallbackHaloNarrow: {
+    width: 104,
+    height: 104,
+    right: -28,
+    bottom: -44,
+    borderWidth: 16,
+  },
   statuses: {
     position: 'absolute',
     top: spacing.sm,
@@ -394,11 +531,39 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
   },
+  statusesNarrow: {
+    top: spacing.xs,
+    left: spacing.xs,
+    right: spacing.xs,
+    flexDirection: 'column',
+    gap: spacing.xxs,
+  },
+  statusPillNarrow: {
+    maxWidth: '100%',
+    paddingHorizontal: spacing.xs,
+  },
+  narrowDisclosure: {
+    position: 'absolute',
+    right: spacing.xs,
+    bottom: spacing.xs,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
   content: {
     gap: spacing.sm,
     paddingHorizontal: spacing.xs,
     paddingTop: spacing.md,
     paddingBottom: spacing.xs,
+  },
+  contentNarrow: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xxs,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xxs,
   },
   headingRow: {
     flexDirection: 'row',
@@ -417,10 +582,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xxs,
   },
-  expandedContent: {
+  modalRoot: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+  },
+  modalBackdrop: {
+    zIndex: 0,
+  },
+  modalCard: {
+    zIndex: 1,
+    width: '100%',
+    maxWidth: 620,
+    maxHeight: '92%',
+    overflow: 'hidden',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+  },
+  modalHeading: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
+    padding: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  modalHeadingCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xxs,
+  },
+  modalScroll: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: spacing.md,
+  },
+  modalBody: {
+    gap: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  modalMedia: {
+    height: 240,
+  },
+  modalDetails: {
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   detailList: {
     gap: spacing.sm,
@@ -435,20 +643,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  openActionWrap: {
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  openButton: {
-    minHeight: 48,
-    flexShrink: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
+  modalFooter: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    borderTopWidth: 1,
   },
 });

@@ -147,6 +147,245 @@ begin
 end;
 $$;
 
+select pg_temp.assert_true(
+  has_function_privilege(
+    'authenticated',
+    'public.complete_google_student_onboarding(text,text,text,text,boolean,text,boolean,text)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'anon',
+    'public.complete_google_student_onboarding(text,text,text,text,boolean,text,boolean,text)',
+    'execute'
+  ),
+  'Google onboarding RPC is authenticated-only'
+);
+
+insert into strathfind_test_state (key, value)
+select 'google_code_use_before', j.use_count::text
+from public.university_join_codes j
+where j.code_hash = extensions.digest('sf-demo-2026', 'sha256');
+
+-- Supabase Auth creates the user before the provider identity is available.
+-- The trigger must allow this trusted Google row without granting it a campus
+-- profile or consuming the join code.
+insert into auth.users (
+  id, email, aud, role, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+) values (
+  '10000000-0000-4000-8000-000000000097',
+  'google-student@strathfind.test',
+  'authenticated',
+  'authenticated',
+  '{"provider":"google","providers":["google"]}',
+  '{"name":"Google Student","avatar_url":"https://example.test/avatar.png","display_name":"Untrusted Name","phone_e164":"+254799999999","university_code":"UNTRUSTED","student_number":"UNTRUSTED","role":"admin","university_id":"20000000-0000-4000-8000-000000000001","terms_accepted":false,"terms_version":"old","privacy_notice_acknowledged":false,"privacy_notice_version":"old"}',
+  now(),
+  now()
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.profiles
+    where id = '10000000-0000-4000-8000-000000000097'
+  )
+  and (
+    select use_count
+    from public.university_join_codes
+    where code_hash = extensions.digest('sf-demo-2026', 'sha256')
+  ) = (
+    select value::integer
+    from strathfind_test_state
+    where key = 'google_code_use_before'
+  ),
+  'Google Auth insertion stays profileless and does not consume a join code'
+);
+
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-4000-8000-000000000097',
+  false
+);
+
+set local role authenticated;
+
+do $$
+begin
+  begin
+    perform public.complete_google_student_onboarding(
+      'Google Student',
+      '+254700000097',
+      'G/097',
+      'SF-DEMO-2026',
+      true,
+      '2026-08-26',
+      true,
+      '2026-08-26'
+    );
+    raise exception 'onboarding without a trusted Google identity unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
+  end;
+end;
+$$;
+
+reset role;
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.profiles
+    where id = '10000000-0000-4000-8000-000000000097'
+  )
+  and (
+    select use_count
+    from public.university_join_codes
+    where code_hash = extensions.digest('sf-demo-2026', 'sha256')
+  ) = (
+    select value::integer
+    from strathfind_test_state
+    where key = 'google_code_use_before'
+  ),
+  'unverified-provider onboarding fails without consuming a join code'
+);
+
+insert into auth.identities (
+  provider_id,
+  user_id,
+  identity_data,
+  provider,
+  last_sign_in_at,
+  created_at,
+  updated_at
+) values (
+  'strathfind-google-identity-097',
+  '10000000-0000-4000-8000-000000000097',
+  '{"sub":"strathfind-google-identity-097","email":"google-student@strathfind.test"}',
+  'google',
+  now(),
+  now(),
+  now()
+);
+
+set local role authenticated;
+
+do $$
+begin
+  begin
+    perform public.complete_google_student_onboarding(
+      'Google Student',
+      '+254700000097',
+      'G/097',
+      'SF-DEMO-2026',
+      false,
+      '2026-08-26',
+      true,
+      '2026-08-26'
+    );
+    raise exception 'Google onboarding without current legal acceptance unexpectedly succeeded';
+  exception
+    when invalid_parameter_value then null;
+  end;
+end;
+$$;
+
+select pg_temp.assert_true(
+  public.complete_google_student_onboarding(
+    '  Google Student  ',
+    '  +254700000097  ',
+    'g/097',
+    '  SF-DEMO-2026  ',
+    true,
+    '2026-08-26',
+    true,
+    '2026-08-26'
+  ) = '10000000-0000-4000-8000-000000000097'::uuid,
+  'trusted Google identity completes student onboarding'
+);
+
+-- A lost response may cause the client to retry. Existing profile data must
+-- win without validating new inputs, overwriting authority, or using a code.
+select pg_temp.assert_true(
+  public.complete_google_student_onboarding(
+    'Attempted Overwrite',
+    '+254700000000',
+    'OTHER/097',
+    'INVALID-CODE',
+    false,
+    'old',
+    false,
+    'old'
+  ) = '10000000-0000-4000-8000-000000000097'::uuid,
+  'completed Google onboarding is idempotent'
+);
+
+reset role;
+
+select pg_temp.assert_true(
+  (
+    select role = 'student'
+      and display_name = 'Google Student'
+      and student_number = 'G/097'
+    from public.profiles
+    where id = '10000000-0000-4000-8000-000000000097'
+  )
+  and (
+    select phone_e164 = '+254700000097'
+    from public.profile_contacts
+    where profile_id = '10000000-0000-4000-8000-000000000097'
+  ),
+  'Google onboarding normalizes fields and always creates a student profile'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 2
+      and bool_and(recorded_at <= clock_timestamp())
+    from public.account_legal_acknowledgements
+    where profile_id = '10000000-0000-4000-8000-000000000097'
+      and document_version = '2026-08-26'
+  ),
+  'Google onboarding records both current legal acknowledgements'
+);
+
+select pg_temp.assert_true(
+  (
+    select use_count
+    from public.university_join_codes
+    where code_hash = extensions.digest('sf-demo-2026', 'sha256')
+  ) = (
+    select value::integer + 1
+    from strathfind_test_state
+    where key = 'google_code_use_before'
+  ),
+  'Google onboarding and its retry consume exactly one join-code use'
+);
+
+select pg_temp.assert_true(
+  (
+    select raw_user_meta_data ? 'name'
+      and raw_user_meta_data ? 'avatar_url'
+      and not (
+        raw_user_meta_data ? 'university_code'
+        or raw_user_meta_data ? 'student_number'
+        or raw_user_meta_data ? 'role'
+        or raw_user_meta_data ? 'university_id'
+        or raw_user_meta_data ? 'terms_accepted'
+        or raw_user_meta_data ? 'terms_version'
+        or raw_user_meta_data ? 'privacy_notice_acknowledged'
+        or raw_user_meta_data ? 'privacy_notice_version'
+        or raw_user_meta_data ? 'display_name'
+        or raw_user_meta_data ? 'phone_e164'
+      )
+    from auth.users
+    where id = '10000000-0000-4000-8000-000000000097'
+  ),
+  'Google onboarding preserves provider profile data and removes authority or one-time fields'
+);
+
+-- Keep the remainder of this regression script's original fixture counts.
+delete from auth.users
+where id = '10000000-0000-4000-8000-000000000097';
+
 update public.profiles
 set role = 'admin'
 where id = '10000000-0000-4000-8000-000000000003';

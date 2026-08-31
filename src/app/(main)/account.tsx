@@ -15,7 +15,7 @@ import {
   UserPlus,
 } from 'lucide-react-native';
 import { useEffect, useState, type ComponentType } from 'react';
-import { Platform, Pressable, StyleSheet, Switch, View, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import type { LucideProps } from 'lucide-react-native';
 
 import {
@@ -27,8 +27,9 @@ import {
   SecondaryButton,
   StatusPill,
   Surface,
+  WideSwitch,
 } from '@/components/strathfind';
-import { focusRing, radius, spacing } from '@/constants/design';
+import { focusRing, hoverShadow, radius, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
 import { useAppState } from '@/state';
 import { useAppTheme } from '@/theme/app-theme';
@@ -181,7 +182,7 @@ export default function AccountScreen() {
                   {isDark ? 'Dark appearance' : 'Light appearance'}
                 </AppText>
               </View>
-              <Switch
+              <WideSwitch
                 accessibilityHint="Switch between light and dark appearance"
                 accessibilityLabel="Dark mode"
                 hitSlop={8}
@@ -201,7 +202,7 @@ export default function AccountScreen() {
                 <AppText color={colors.ink} variant="bodyStrong">Haptic feedback</AppText>
                 <AppText color={colors.muted} variant="support">Gentle tap cues</AppText>
               </View>
-              <Switch
+              <WideSwitch
                 accessibilityLabel="Haptic feedback"
                 hitSlop={8}
                 ios_backgroundColor={colors.line}
@@ -254,9 +255,10 @@ function MenuRow({
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
       onPress={onPress}
-      style={({ pressed }) => [
+      style={({ hovered, pressed }) => [
         styles.settingRow,
         { backgroundColor: pressed ? colors.inset : 'transparent' },
+        hoverShadow(hovered, colors.black),
         focusRing(focused, colors.wine),
         Platform.OS === 'web' ? ({ cursor: 'pointer' } as ViewStyle) : null,
       ]}

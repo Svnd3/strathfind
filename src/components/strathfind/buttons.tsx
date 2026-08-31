@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import type { LucideProps } from 'lucide-react-native';
 
-import { focusRing, layout, radius, spacing } from '@/constants/design';
+import { focusRing, hoverShadow, layout, radius, spacing } from '@/constants/design';
 import { useAppTheme } from '@/theme/app-theme';
 
 import { AppText } from './typography';
@@ -92,6 +92,7 @@ function Button({
           maxWidth: '100%',
           opacity: inactive ? 0.48 : 1,
           transform: [{ scale: pressed ? 0.985 : 1 }],
+          ...hoverShadow(hovered && !inactive, colors.black),
           ...(Platform.OS === 'web' ? ({ cursor: inactive ? 'not-allowed' : 'pointer' } as ViewStyle) : {}),
         },
         focusRing(focused, tone === 'primary' ? colors.yellow : colors.wine),
@@ -184,6 +185,7 @@ export function IconButton({
           borderWidth: 1,
           borderColor: selected ? colors.wine : colors.lineSoft,
           opacity: disabled ? 0.45 : 1,
+          ...hoverShadow(hovered && !disabled, colors.black),
           ...(Platform.OS === 'web' ? ({ cursor: disabled ? 'not-allowed' : 'pointer' } as ViewStyle) : {}),
         },
         focusRing(focused, colors.wine),

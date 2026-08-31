@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -12,33 +12,14 @@ import {
   Surface,
 } from '@/components/strathfind';
 import { layout, spacing, type AppPalette } from '@/constants/design';
-import { supabase } from '@/lib/supabase';
-import { useAppState } from '@/state';
+import { sanitizeOAuthReturnTo } from '@/lib/oauth-navigation';
+import { type GoogleAuthOutcome, useAppState } from '@/state';
 import { useAppTheme } from '@/theme/app-theme';
 
-type CallbackResult = { ok: true; userId: string } | { ok: false; message: string };
+type CallbackResult = { ok: true; data: GoogleAuthOutcome } | { ok: false; error: string };
 
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
-}
-
-async function finishEmailAuth(code?: string, callbackError?: string): Promise<CallbackResult> {
-  if (callbackError) {
-    return { ok: false, message: 'This confirmation link could not be completed.' };
-  }
-  if (!supabase) {
-    return { ok: false, message: 'Authentication is not configured for this build.' };
-  }
-
-  if (code) {
-    const { data: exchangeData, error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error && exchangeData.session) return { ok: true, userId: exchangeData.session.user.id };
-    return { ok: false, message: 'This confirmation link is invalid or has expired.' };
-  }
-
-  const { data, error } = await supabase.auth.getSession();
-  if (!error && data.session) return { ok: true, userId: data.session.user.id };
-  return { ok: false, message: 'This confirmation link is invalid or has expired.' };
 }
 
 export default function AuthCallbackScreen() {
@@ -46,17 +27,19 @@ export default function AuthCallbackScreen() {
     code?: string | string[];
     error?: string | string[];
     error_description?: string | string[];
+    sb_flow_id?: string | string[];
   }>();
-  const { loading, user } = useAppState();
+  const { finishOAuthSignIn } = useAppState();
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const code = firstParam(params.code);
+  const flowId = firstParam(params.sb_flow_id);
   const callbackError = firstParam(params.error) ?? firstParam(params.error_description);
   const [result, setResult] = useState<CallbackResult | null>(null);
   const request = useRef<Promise<CallbackResult> | null>(null);
 
   useEffect(() => {
-    request.current ??= finishEmailAuth(code, callbackError);
+    request.current ??= finishOAuthSignIn({ code, flowId, callbackError });
     let active = true;
     void request.current.then((nextResult) => {
       if (active) setResult(nextResult);
@@ -64,27 +47,28 @@ export default function AuthCallbackScreen() {
     return () => {
       active = false;
     };
-  }, [callbackError, code]);
+  }, [callbackError, code, finishOAuthSignIn, flowId]);
 
   useEffect(() => {
-    if (result?.ok && !loading && user?.id === result.userId) {
-      router.replace(user.role === 'admin' ? '/admin' : '/account');
-    }
-  }, [loading, result, user]);
-
-  useEffect(() => {
-    if (!result?.ok || user?.id === result.userId) return;
-    const timeout = setTimeout(() => {
-      setResult({
-        ok: false,
-        message: 'Your email was confirmed, but the campus profile could not be loaded. Try signing in again.',
+    if (!result?.ok) return;
+    if (result.data.status === 'needs-onboarding') {
+      const returnTo = sanitizeOAuthReturnTo(result.data.returnTo);
+      router.replace({
+        pathname: '/auth-onboarding',
+        params: returnTo ? { returnTo } : {},
       });
-    }, 12_000);
-    return () => clearTimeout(timeout);
-  }, [result, user?.id]);
+      return;
+    }
+
+    const { user, returnTo } = result.data;
+    const destination = user.role === 'admin'
+      ? '/admin'
+      : (sanitizeOAuthReturnTo(returnTo) ?? '/account');
+    router.replace(destination as Href);
+  }, [result]);
 
   const message = useMemo(
-    () => (result && !result.ok ? result.message : 'Finishing sign in'),
+    () => (result && !result.ok ? result.error : 'Finishing sign in'),
     [result],
   );
 

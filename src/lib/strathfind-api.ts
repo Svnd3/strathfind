@@ -152,14 +152,14 @@ function ensureNoError(error: { message?: string } | null, fallback: string) {
   if (error) throw new Error(error.message || fallback);
 }
 
-export async function fetchCampusUser(
+export async function fetchCampusUserIfExists(
   client: SupabaseClient,
   authUser: SupabaseUser,
-): Promise<CampusUser> {
+): Promise<CampusUser | null> {
   const profileResult = await client.rpc('get_my_profile');
   ensureNoError(profileResult.error, 'Your campus profile could not be loaded.');
   const profile = firstRow(profileResult.data);
-  if (!profile) throw new Error('Your campus profile is not available. Contact campus support.');
+  if (!profile) return null;
 
   const universityId = textValue(profile.university_id);
   const [universityResult, contactResult] = await Promise.all([
@@ -180,6 +180,43 @@ export async function fetchCampusUser(
     universityId,
     campusId: textValue(profile.student_number),
   };
+}
+
+export async function fetchCampusUser(
+  client: SupabaseClient,
+  authUser: SupabaseUser,
+): Promise<CampusUser> {
+  const user = await fetchCampusUserIfExists(client, authUser);
+  if (!user) throw new Error('Your campus profile is not available. Contact campus support.');
+  return user;
+}
+
+export interface GoogleStudentOnboardingInput {
+  name: string;
+  phone: string;
+  campusId: string;
+  universityCode: string;
+  acceptedTerms: boolean;
+  termsVersion: string;
+  privacyNoticeVersion: string;
+}
+
+export async function completeRemoteGoogleStudentOnboarding(
+  client: SupabaseClient,
+  input: GoogleStudentOnboardingInput,
+) {
+  const result = await client.rpc('complete_google_student_onboarding', {
+    p_display_name: input.name,
+    p_phone_e164: input.phone,
+    p_student_number: input.campusId,
+    p_university_code: input.universityCode,
+    p_terms_accepted: input.acceptedTerms,
+    p_terms_version: input.termsVersion,
+    p_privacy_notice_acknowledged: input.acceptedTerms,
+    p_privacy_notice_version: input.privacyNoticeVersion,
+  });
+  ensureNoError(result.error, 'Your student profile could not be completed.');
+  return textValue(result.data);
 }
 
 async function signedPhotoUrls(client: SupabaseClient, rows: UnknownRow[]) {

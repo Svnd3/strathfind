@@ -10,7 +10,7 @@ const publishableKey = (
   ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 )?.trim();
 
-const storage = {
+export const supabaseAuthStorage = {
   async getItem(key: string) {
     if (Platform.OS === 'web') return globalThis.localStorage?.getItem(key) ?? null;
     return SecureStore.getItemAsync(key);
@@ -36,7 +36,7 @@ export const isSupabaseConfigured = Boolean(url && publishableKey);
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(url!, publishableKey!, {
       auth: {
-        storage,
+        storage: supabaseAuthStorage,
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: false,

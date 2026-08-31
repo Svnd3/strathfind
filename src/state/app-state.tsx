@@ -1,5 +1,6 @@
 import * as Linking from 'expo-linking';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import * as WebBrowser from 'expo-web-browser';
+import type { SupabaseClient, User as SupabaseUser } from '@supabase/supabase-js';
 import {
   createContext,
   type PropsWithChildren,
@@ -9,6 +10,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { Platform } from 'react-native';
 
 import { authorizeSignInPortal, type AuthPortal } from '@/lib/auth-access';
 import { haptics } from '@/lib/haptics';
@@ -23,7 +25,9 @@ import {
   createRemoteClaim,
   createRemoteReport,
   createRemoteUniversityCode,
+  completeRemoteGoogleStudentOnboarding,
   fetchCampusUser,
+  fetchCampusUserIfExists,
   fetchPublicItemFeed,
   fetchRemoteSnapshot,
   flagRemoteItem,
@@ -36,7 +40,15 @@ import {
   type RemoteItemFlag,
   type RemoteNotification,
 } from '@/lib/strathfind-api';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import {
+  buildOAuthCallbackUrl,
+  consumeOAuthIntent,
+  OAUTH_INTENT_STORAGE_KEY,
+  persistOAuthIntent,
+  type OAuthIntent,
+} from '@/lib/oauth-navigation';
+import { normalizeKenyanMobile } from '@/lib/phone-number';
+import { isSupabaseConfigured, supabase, supabaseAuthStorage } from '@/lib/supabase';
 import type {
   CampusUser,
   Claim,
@@ -87,6 +99,34 @@ export interface SignUpInput {
   acceptedTerms: boolean;
 }
 
+export interface GoogleSignInInput {
+  portal: AuthPortal;
+  returnTo?: string | null;
+}
+
+export interface GoogleOnboardingInput {
+  name: string;
+  phone: string;
+  campusId: string;
+  universityCode: string;
+  acceptedTerms: boolean;
+}
+
+export type GoogleAuthOutcome =
+  | { status: 'ready'; user: CampusUser; returnTo: string | null }
+  | {
+      status: 'needs-onboarding';
+      email: string;
+      suggestedName: string;
+      returnTo: string | null;
+    };
+
+export interface FinishOAuthInput {
+  code?: string;
+  flowId?: string;
+  callbackError?: string;
+}
+
 export type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };
@@ -109,6 +149,9 @@ export interface AppStateValue {
   flaggedItemIds: string[];
   signIn: (input: SignInInput) => Promise<ActionResult<CampusUser>>;
   signUp: (input: SignUpInput) => Promise<ActionResult<CampusUser | null>>;
+  signInWithGoogle: (input: GoogleSignInInput) => Promise<ActionResult<GoogleAuthOutcome | null>>;
+  finishOAuthSignIn: (input: FinishOAuthInput) => Promise<ActionResult<GoogleAuthOutcome>>;
+  completeGoogleOnboarding: (input: GoogleOnboardingInput) => Promise<ActionResult<CampusUser>>;
   signOut: () => Promise<void>;
   createReport: (draft: ReportDraft) => Promise<ActionResult<PublicItem>>;
   claimItem: (itemId: string, proof: string) => Promise<ActionResult<Claim>>;
@@ -139,10 +182,36 @@ function actionError(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-function normalizeE164(value: string) {
-  let normalized = value.trim().replace(/[\s().-]/g, '');
-  if (normalized.startsWith('00')) normalized = `+${normalized.slice(2)}`;
-  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
+function isGoogleAuthUser(authUser: SupabaseUser) {
+  const provider = authUser.app_metadata?.provider;
+  const providers = authUser.app_metadata?.providers;
+  return provider === 'google' || (Array.isArray(providers) && providers.includes('google'));
+}
+
+function googleDisplayName(authUser: SupabaseUser) {
+  const metadata = authUser.user_metadata ?? {};
+  for (const key of ['full_name', 'name', 'display_name']) {
+    const value = metadata[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function oauthCallbackUrl() {
+  if (Platform.OS === 'web') {
+    const origin = globalThis.location?.origin;
+    if (!origin) throw new Error('This browser origin cannot receive sign-in callbacks.');
+    return buildOAuthCallbackUrl({ platform: 'web', origin });
+  }
+  return buildOAuthCallbackUrl({ platform: 'native', scheme: 'strathfind' });
+}
+
+function callbackValue(url: string, key: string) {
+  try {
+    return new URL(url).searchParams.get(key) ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function handoffCodeFor(itemId: string) {
@@ -249,6 +318,48 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     return snapshot;
   }, []);
 
+  const finalizeAuthenticatedUser = useCallback(async (
+    authUser: SupabaseUser,
+    intent: OAuthIntent | null,
+  ): Promise<GoogleAuthOutcome> => {
+    if (!supabase) throw new Error('Authentication is not configured for this build.');
+
+    const campusUser = await fetchCampusUserIfExists(supabase, authUser);
+    if (!campusUser) {
+      if (!isGoogleAuthUser(authUser)) {
+        await discardRemoteSession(authUser.id);
+        throw new Error('Your campus profile is not available. Contact campus support.');
+      }
+      if (intent?.portal === 'admin') {
+        await discardRemoteSession(authUser.id);
+        throw new Error('This Google account is not provisioned as an administrator. Use Student sign in.');
+      }
+
+      clearRemoteState();
+      return {
+        status: 'needs-onboarding',
+        email: authUser.email ?? '',
+        suggestedName: googleDisplayName(authUser),
+        returnTo: intent?.returnTo ?? null,
+      };
+    }
+
+    if (intent) {
+      const portalAccess = authorizeSignInPortal(campusUser.role, intent.portal);
+      if (!portalAccess.ok) {
+        await discardRemoteSession(campusUser.id);
+        throw new Error(portalAccess.error);
+      }
+    }
+
+    const snapshot = await loadRemoteState(campusUser);
+    if (!snapshot || !(await sessionMatchesUser(supabase, campusUser.id))) {
+      throw new Error('The authenticated session changed before sign in completed.');
+    }
+    setUser(campusUser);
+    return { status: 'ready', user: campusUser, returnTo: intent?.returnTo ?? null };
+  }, [clearRemoteState, discardRemoteSession, loadRemoteState]);
+
   useEffect(() => {
     let active = true;
     const remoteClient = supabase;
@@ -261,8 +372,12 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           if (data.session?.user) {
             expectedUserId = data.session.user.id;
             if (!(await sessionMatchesUser(remoteClient, expectedUserId))) return;
-            const resolvedUser = await fetchCampusUser(remoteClient, data.session.user);
+            const resolvedUser = await fetchCampusUserIfExists(remoteClient, data.session.user);
             if (!active || !(await sessionMatchesUser(remoteClient, expectedUserId))) return;
+            if (!resolvedUser) {
+              clearRemoteState();
+              return;
+            }
             const snapshot = await loadRemoteState(resolvedUser);
             if (
               snapshot
@@ -317,7 +432,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         void sessionMatchesUser(remoteClient, expectedUserId)
           .then((matches) => {
             if (!matches) return null;
-            return fetchCampusUser(remoteClient, session.user);
+            return fetchCampusUserIfExists(remoteClient, session.user);
           })
           .then(async (resolved) => {
             if (!resolved || !active || !(await sessionMatchesUser(remoteClient, expectedUserId))) return;
@@ -417,7 +532,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       const name = input.name.trim();
       const email = input.email.trim().toLowerCase();
       const universityCode = input.universityCode.trim().toUpperCase();
-      const phoneE164 = normalizeE164(input.phone);
+      const phoneE164 = normalizeKenyanMobile(input.phone);
       if (!input.acceptedTerms) {
         const error = 'Accept the Terms and acknowledge the Privacy Notice to continue.';
         showToast(error, 'error');
@@ -429,7 +544,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
         return { ok: false, error };
       }
       if (!phoneE164) {
-        const error = 'Use an international mobile number, for example +254712345678.';
+        const error = 'Use a Kenyan mobile number starting 01, 07, or +254.';
         showToast(error, 'error');
         return { ok: false, error };
       }
@@ -496,6 +611,186 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       }
     },
     [discardRemoteSession, loadRemoteState, showToast],
+  );
+
+  const finishOAuthSignIn = useCallback(
+    async ({ code, flowId, callbackError }: FinishOAuthInput): Promise<ActionResult<GoogleAuthOutcome>> => {
+      if (!supabase) {
+        const error = 'Authentication is not configured for this build.';
+        return { ok: false, error };
+      }
+
+      setLoading(true);
+      try {
+        const intent = await consumeOAuthIntent(supabaseAuthStorage);
+        if (callbackError) {
+          const error = 'Google sign in was not completed. Try again.';
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+
+        let authUser: SupabaseUser | undefined;
+        if (code) {
+          const result = await supabase.auth.exchangeCodeForSession(
+            code,
+            flowId ? { flowId } : undefined,
+          );
+          if (result.error || !result.data.session) {
+            const error = 'This sign-in link is invalid or has expired.';
+            showToast(error, 'error');
+            return { ok: false, error };
+          }
+          authUser = result.data.session.user;
+        } else {
+          const result = await supabase.auth.getSession();
+          if (result.error || !result.data.session) {
+            const error = 'This sign-in link is invalid or has expired.';
+            showToast(error, 'error');
+            return { ok: false, error };
+          }
+          authUser = result.data.session.user;
+        }
+
+        const outcome = await finalizeAuthenticatedUser(authUser, intent);
+        await haptics.confirm();
+        showToast(
+          outcome.status === 'ready' ? 'Welcome back.' : 'Add your campus details to continue.',
+          outcome.status === 'ready' ? 'success' : 'info',
+        );
+        return { ok: true, data: outcome };
+      } catch (cause) {
+        const error = actionError(cause, 'Google sign in is temporarily unavailable. Try again.');
+        showToast(error, 'error');
+        return { ok: false, error };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [finalizeAuthenticatedUser, showToast],
+  );
+
+  const signInWithGoogle = useCallback(
+    async ({ portal, returnTo }: GoogleSignInInput): Promise<ActionResult<GoogleAuthOutcome | null>> => {
+      if (!supabase) {
+        const error = 'Accounts are unavailable until Supabase is connected.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
+
+      setLoading(true);
+      try {
+        const redirectTo = oauthCallbackUrl();
+        await persistOAuthIntent(supabaseAuthStorage, portal, returnTo);
+        const result = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo,
+            skipBrowserRedirect: true,
+            queryParams: { prompt: 'select_account' },
+          },
+        });
+        if (result.error || !result.data.url) {
+          await supabaseAuthStorage.removeItem(OAUTH_INTENT_STORAGE_KEY);
+          const error = result.error?.message ?? 'Google sign in could not be started.';
+          showToast(error, 'error');
+          return { ok: false, error };
+        }
+
+        if (Platform.OS === 'web') {
+          await Linking.openURL(result.data.url);
+          return { ok: true, data: null };
+        }
+
+        const browserResult = await WebBrowser.openAuthSessionAsync(result.data.url, redirectTo);
+        if (browserResult.type !== 'success') {
+          await supabaseAuthStorage.removeItem(OAUTH_INTENT_STORAGE_KEY);
+          const error = 'Google sign in was cancelled.';
+          showToast(error, 'info');
+          return { ok: false, error };
+        }
+
+        return finishOAuthSignIn({
+          code: callbackValue(browserResult.url, 'code'),
+          flowId: result.data.flowId ?? callbackValue(browserResult.url, 'sb_flow_id'),
+          callbackError: callbackValue(browserResult.url, 'error_description')
+            ?? callbackValue(browserResult.url, 'error'),
+        });
+      } catch (cause) {
+        await supabaseAuthStorage.removeItem(OAUTH_INTENT_STORAGE_KEY).catch(() => undefined);
+        const error = actionError(cause, 'Google sign in is temporarily unavailable. Try again.');
+        showToast(error, 'error');
+        return { ok: false, error };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [finishOAuthSignIn, showToast],
+  );
+
+  const completeGoogleOnboarding = useCallback(
+    async (input: GoogleOnboardingInput): Promise<ActionResult<CampusUser>> => {
+      if (!supabase) {
+        const error = 'Accounts are unavailable until Supabase is connected.';
+        return { ok: false, error };
+      }
+
+      const name = input.name.trim();
+      const universityCode = input.universityCode.trim().toUpperCase();
+      const campusId = input.campusId.trim().toUpperCase();
+      const phone = normalizeKenyanMobile(input.phone);
+      if (!input.acceptedTerms) {
+        const error = 'Accept the Terms and acknowledge the Privacy Notice to continue.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (!name || !universityCode || !campusId || !input.phone.trim()) {
+        const error = 'Complete your student profile.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+      if (!phone) {
+        const error = 'Use a Kenyan mobile number starting 01, 07, or +254.';
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+
+      setLoading(true);
+      try {
+        const sessionResult = await supabase.auth.getSession();
+        const authUser = sessionResult.data.session?.user;
+        if (sessionResult.error || !authUser) throw new Error('Sign in with Google again to continue.');
+        if (!isGoogleAuthUser(authUser)) throw new Error('Google authentication is required.');
+
+        await completeRemoteGoogleStudentOnboarding(supabase, {
+          name,
+          phone,
+          campusId,
+          universityCode,
+          acceptedTerms: true,
+          termsVersion: CURRENT_TERMS_VERSION,
+          privacyNoticeVersion: CURRENT_PRIVACY_NOTICE_VERSION,
+        });
+        const campusUser = await fetchCampusUser(supabase, authUser);
+        if (campusUser.role !== 'student') {
+          throw new Error('Public onboarding can create student accounts only.');
+        }
+        const snapshot = await loadRemoteState(campusUser);
+        if (!snapshot || !(await sessionMatchesUser(supabase, campusUser.id))) {
+          throw new Error('The authenticated session changed before setup completed.');
+        }
+        setUser(campusUser);
+        await haptics.confirm();
+        showToast('Student account ready.', 'success');
+        return { ok: true, data: campusUser };
+      } catch (cause) {
+        const error = actionError(cause, 'Student setup is temporarily unavailable. Try again.');
+        showToast(error, 'error');
+        return { ok: false, error };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadRemoteState, showToast],
   );
 
   const signOut = useCallback(async () => {
@@ -1186,6 +1481,9 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       flaggedItemIds,
       signIn,
       signUp,
+      signInWithGoogle,
+      finishOAuthSignIn,
+      completeGoogleOnboarding,
       signOut,
       createReport,
       claimItem,
@@ -1204,6 +1502,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     [
       claimItem,
       claims,
+      completeGoogleOnboarding,
       createUniversityCode,
       createReport,
       currentUserActivity,
@@ -1211,6 +1510,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       flagItem,
       flags,
       flaggedItemIds,
+      finishOAuthSignIn,
       getItem,
       getHandoffCode,
       items,
@@ -1223,6 +1523,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       revealContact,
       revealedContactIds,
       signIn,
+      signInWithGoogle,
       signOut,
       signUp,
       toast,

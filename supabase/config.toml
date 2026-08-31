@@ -43,10 +43,9 @@ enabled = true
 site_url = "http://127.0.0.1:8081"
 additional_redirect_urls = [
   "strathfind:///auth-callback",
-  "http://127.0.0.1:8081/**",
-  "http://127.0.0.1:3000/**",
-  "http://localhost:8081/**",
-  "http://localhost:3000/**",
+  "http://127.0.0.1:8081/auth-callback",
+  "http://localhost:8081/auth-callback",
+  "https://starthfind.vercel.app/auth-callback",
 ]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true

@@ -1,8 +1,16 @@
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { ArrowLeft, Check, Eye, EyeOff, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from 'react-native';
 
+import { GoogleMark } from '@/components/google-mark';
 import {
   AppText,
   BrandLockup,
@@ -13,7 +21,8 @@ import {
   TextButton,
   TextField,
 } from '@/components/strathfind';
-import { focusRing, radius, spacing, type AppPalette } from '@/constants/design';
+import { focusRing, hoverShadow, layout, radius, spacing, type AppPalette } from '@/constants/design';
+import { sanitizeOAuthReturnTo } from '@/lib/oauth-navigation';
 import type { UserRole } from '@/lib/types';
 import { useAppState } from '@/state';
 import { useAppTheme } from '@/theme/app-theme';
@@ -29,8 +38,60 @@ interface PortalOptionProps {
   styles: ReturnType<typeof createStyles>;
 }
 
+interface GoogleButtonProps {
+  colors: AppPalette;
+  disabled: boolean;
+  hint: string;
+  label: string;
+  loading: boolean;
+  onPress: () => void;
+  styles: ReturnType<typeof createStyles>;
+}
+
+function GoogleButton({
+  colors,
+  disabled,
+  hint,
+  label,
+  loading,
+  onPress,
+  styles,
+}: GoogleButtonProps) {
+  const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const inactive = disabled || loading;
+
+  return (
+    <Pressable
+      accessibilityHint={hint}
+      accessibilityLabel={loading ? 'Opening Google sign in' : label}
+      accessibilityRole="button"
+      accessibilityState={{ busy: loading, disabled: inactive }}
+      disabled={inactive}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.googleButton,
+        (pressed || hovered) && styles.googleButtonActive,
+        hoverShadow(hovered && !inactive, colors.black),
+        inactive && styles.googleButtonDisabled,
+        focusRing(focused, colors.wine),
+      ]}
+    >
+      {loading ? <ActivityIndicator color={colors.ink} size="small" /> : <GoogleMark size={20} />}
+      <AppText accessibilityLiveRegion={loading ? 'polite' : 'none'} variant="bodyStrong">
+        {loading ? 'Opening Google…' : label}
+      </AppText>
+    </Pressable>
+  );
+}
+
 function PortalOption({ colors, icon: Icon, label, onPress, selected, styles }: PortalOptionProps) {
   const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   return (
     <Pressable
@@ -40,11 +101,14 @@ function PortalOption({ colors, icon: Icon, label, onPress, selected, styles }: 
       accessibilityState={{ checked: selected }}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       onPress={onPress}
       style={({ pressed }) => [
         styles.portalOption,
         selected && styles.portalOptionSelected,
         pressed && styles.portalOptionPressed,
+        hoverShadow(hovered, colors.black),
         focusRing(focused, colors.wine),
       ]}
     >
@@ -57,18 +121,25 @@ function PortalOption({ colors, icon: Icon, label, onPress, selected, styles }: 
   );
 }
 
-function safeReturnTo(value: string | undefined): Href | null {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
-  if (value === '/auth' || value.startsWith('/auth?')) return null;
-  return value as Href;
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function safeReturnHref(value: unknown): Href | null {
+  const safePath = sanitizeOAuthReturnTo(value);
+  return safePath ? safePath as Href : null;
 }
 
 export default function AuthScreen() {
-  const params = useLocalSearchParams<{ mode?: string; returnTo?: string }>();
-  const { loading, mode: dataMode, signIn, signUp } = useAppState();
+  const params = useLocalSearchParams<{
+    mode?: string | string[];
+    returnTo?: string | string[];
+  }>();
+  const { loading, mode: dataMode, signIn, signInWithGoogle, signUp } = useAppState();
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [formMode, setFormMode] = useState<FormMode>(params.mode === 'sign-up' ? 'sign-up' : 'sign-in');
+  const returnTo = useMemo(() => safeReturnHref(firstParam(params.returnTo)), [params.returnTo]);
+  const [formMode, setFormMode] = useState<FormMode>(firstParam(params.mode) === 'sign-up' ? 'sign-up' : 'sign-in');
   const [role, setRole] = useState<UserRole>('student');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -80,14 +151,16 @@ export default function AuthScreen() {
   const [passwordToggleFocused, setPasswordToggleFocused] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [termsFocused, setTermsFocused] = useState(false);
+  const [termsHovered, setTermsHovered] = useState(false);
   const [error, setError] = useState('');
+  const [authMethod, setAuthMethod] = useState<'google' | 'password' | null>(null);
 
-  const navigateAfterAuth = (nextRole: UserRole) => {
+  const navigateAfterAuth = (nextRole: UserRole, requestedReturnTo: unknown = returnTo) => {
     if (nextRole === 'admin') {
       router.replace('/admin');
       return;
     }
-    router.replace(safeReturnTo(params.returnTo) ?? '/account');
+    router.replace(safeReturnHref(requestedReturnTo) ?? '/account');
   };
 
   const selectMode = (nextMode: FormMode) => {
@@ -103,28 +176,73 @@ export default function AuthScreen() {
       return;
     }
 
-    if (formMode === 'sign-in') {
-      const result = await signIn({ email, password, portal: role });
+    setAuthMethod('password');
+    try {
+      if (formMode === 'sign-in') {
+        const result = await signIn({ email, password, portal: role });
+        if (!result.ok) return setError(result.error);
+        navigateAfterAuth(result.data.role);
+        return;
+      }
+
+      if (!acceptedTerms) {
+        setError('Accept the Terms and Privacy Notice to continue.');
+        return;
+      }
+      const result = await signUp({
+        name,
+        email,
+        phone,
+        campusId,
+        universityCode,
+        password,
+        acceptedTerms,
+      });
       if (!result.ok) return setError(result.error);
-      navigateAfterAuth(result.data.role);
+      if (result.data) navigateAfterAuth('student');
+    } finally {
+      setAuthMethod(null);
+    }
+  };
+
+  const continueWithGoogle = async () => {
+    setError('');
+    if (dataMode === 'setup') {
+      setError('Secure accounts are not connected yet.');
       return;
     }
 
-    if (!acceptedTerms) {
-      setError('Accept the Terms and Privacy Notice to continue.');
-      return;
+    setAuthMethod('google');
+    try {
+      const portal = formMode === 'sign-up' ? 'student' : role;
+      const result = await signInWithGoogle({
+        portal,
+        returnTo: returnTo ? String(returnTo) : null,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      const outcome = result.data;
+      if (!outcome) return;
+      if (outcome.status === 'ready') {
+        navigateAfterAuth(outcome.user.role, outcome.returnTo);
+        return;
+      }
+
+      const onboardingReturnTo = sanitizeOAuthReturnTo(outcome.returnTo);
+      router.replace({
+        pathname: '/auth-onboarding',
+        params: {
+          ...(onboardingReturnTo ? { returnTo: onboardingReturnTo } : {}),
+        },
+      } as Href);
+    } catch {
+      setError('Google sign-in could not be started. Try again.');
+    } finally {
+      setAuthMethod(null);
     }
-    const result = await signUp({
-      name,
-      email,
-      phone,
-      campusId,
-      universityCode,
-      password,
-      acceptedTerms,
-    });
-    if (!result.ok) return setError(result.error);
-    if (result.data) navigateAfterAuth('student');
   };
 
   const title = formMode === 'sign-up'
@@ -192,6 +310,22 @@ export default function AuthScreen() {
               </View>
             ) : null}
 
+            <GoogleButton
+              colors={colors}
+              disabled={dataMode === 'setup' || loading || authMethod !== null}
+              hint={`Use Google for the ${formMode === 'sign-up' ? 'student account' : `${role} portal`}`}
+              label={formMode === 'sign-up' ? 'Sign up with Google' : 'Continue with Google'}
+              loading={authMethod === 'google'}
+              onPress={() => void continueWithGoogle()}
+              styles={styles}
+            />
+
+            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <AppText color={colors.muted} variant="micro">OR USE EMAIL</AppText>
+              <View style={styles.dividerLine} />
+            </View>
+
             <View style={styles.fields}>
               {formMode === 'sign-up' ? (
                 <>
@@ -231,7 +365,7 @@ export default function AuthScreen() {
                   keyboardType="phone-pad"
                   label="Mobile number"
                   onChangeText={setPhone}
-                  placeholder="+254 7…"
+                  placeholder="e.g. 0712 345 678"
                   value={phone}
                 />
               ) : null}
@@ -267,13 +401,24 @@ export default function AuthScreen() {
                 <Pressable
                   accessibilityLabel="Accept the Terms and acknowledge the Privacy Notice"
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: acceptedTerms }}
+                  accessibilityState={{ checked: acceptedTerms, disabled: loading || authMethod !== null }}
+                  disabled={loading || authMethod !== null}
                   onBlur={() => setTermsFocused(false)}
                   onFocus={() => setTermsFocused(true)}
+                  onHoverIn={() => setTermsHovered(true)}
+                  onHoverOut={() => setTermsHovered(false)}
                   onPress={() => setAcceptedTerms((current) => !current)}
-                  style={[styles.checkbox, acceptedTerms && styles.checkboxChecked, focusRing(termsFocused, colors.wine)]}
+                  style={[styles.checkboxHitTarget, focusRing(termsFocused, colors.wine)]}
                 >
-                  {acceptedTerms ? <Check color={colors.onPrimary} size={18} strokeWidth={3} /> : null}
+                  <View
+                    style={[
+                      styles.checkbox,
+                      acceptedTerms && styles.checkboxChecked,
+                      hoverShadow(termsHovered && !(loading || authMethod !== null), colors.black),
+                    ]}
+                  >
+                    {acceptedTerms ? <Check color={colors.onPrimary} size={16} strokeWidth={3} /> : null}
+                  </View>
                 </Pressable>
                 <View style={styles.termsCopy}>
                   <AppText color={colors.inkSoft} variant="support">
@@ -293,9 +438,9 @@ export default function AuthScreen() {
             ) : null}
 
             <PrimaryButton
-              disabled={dataMode === 'setup' || (formMode === 'sign-up' && !acceptedTerms)}
+              disabled={dataMode === 'setup' || authMethod === 'google' || (formMode === 'sign-up' && !acceptedTerms)}
               fullWidth
-              loading={loading}
+              loading={authMethod === 'password' || (loading && authMethod !== 'google')}
               onPress={() => void submit()}
             >
               {formMode === 'sign-in' ? `Sign in as ${role}` : 'Create student account'}
@@ -305,7 +450,10 @@ export default function AuthScreen() {
               <AppText color={colors.muted} variant="support">
                 {formMode === 'sign-in' ? 'New here?' : 'Already registered?'}
               </AppText>
-              <TextButton onPress={() => selectMode(formMode === 'sign-in' ? 'sign-up' : 'sign-in')}>
+              <TextButton
+                disabled={loading || authMethod !== null}
+                onPress={() => selectMode(formMode === 'sign-in' ? 'sign-up' : 'sign-in')}
+              >
                 {formMode === 'sign-in' ? 'Create account' : 'Sign in'}
               </TextButton>
             </View>
@@ -353,12 +501,37 @@ function createStyles(colors: AppPalette) {
       borderRadius: radius.md,
       backgroundColor: colors.warningSoft,
     },
+    googleButton: {
+      minHeight: layout.controlHeight,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.line,
+      backgroundColor: colors.surfaceStrong,
+      ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as ViewStyle) : {}),
+    },
+    googleButtonActive: { backgroundColor: colors.inset },
+    googleButtonDisabled: { opacity: 0.48 },
+    divider: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    dividerLine: { flex: 1, height: 1, backgroundColor: colors.lineSoft },
     fields: { gap: spacing.md },
     passwordToggle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill },
     termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-    checkbox: {
+    checkboxHitTarget: {
       width: 48,
       height: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.md,
+    },
+    checkbox: {
+      width: 26,
+      height: 26,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: radius.md,

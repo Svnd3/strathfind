@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 
-import { focusRing, layout, radius, raisedShadow, spacing } from '@/constants/design';
+import { hoverShadow, layout, radius, raisedShadow, spacing } from '@/constants/design';
 import {
   createGooglePlacesSessionToken,
   fetchGoogleCampusLocations,
@@ -70,6 +70,7 @@ export function CampusLocationField({
   const blurTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [hoveredIndex, setHoveredIndex] = useState(-1);
   const [googleResult, setGoogleResult] = useState<{
     loading: boolean;
     query: string;
@@ -251,6 +252,7 @@ export function CampusLocationField({
         >
           {suggestions.map((suggestion, index) => {
             const active = index === resolvedActiveIndex;
+            const hovered = index === hoveredIndex;
             return (
               <Pressable
                 key={suggestion.id}
@@ -261,14 +263,15 @@ export function CampusLocationField({
                 role={Platform.OS === 'web' ? 'option' : 'listitem'}
                 accessibilityState={{ selected: active }}
                 onFocus={() => setActiveIndex(index)}
-                onHoverIn={() => setActiveIndex(index)}
+                onHoverIn={() => setHoveredIndex(index)}
+                onHoverOut={() => setHoveredIndex(-1)}
                 onPress={() => selectSuggestion(suggestion)}
                 style={({ pressed }) => [
                   styles.suggestion,
                   { backgroundColor: colors.surfaceStrong },
                   index < suggestions.length - 1 && { borderBottomColor: colors.lineSoft },
-                  (active || pressed) && { backgroundColor: colors.wineSoft },
-                  active && focusRing(true, colors.wine),
+                  (active || hovered || pressed) && { backgroundColor: colors.wineSoft },
+                  hoverShadow(hovered, colors.black),
                 ]}
               >
                 <View style={[styles.pin, { backgroundColor: colors.wineSoft }]}>

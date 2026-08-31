@@ -59,7 +59,7 @@ export function BrandLockup({ markSize = 44, inverse = false, compact = false, s
     >
       <BrandMark size={markSize} decorative />
       {!compact ? (
-        <AppText variant="h3" color={inverse ? colors.onPrimary : colors.wine}>
+        <AppText variant="wordmark" color={inverse ? colors.onPrimary : colors.wine}>
           StrathFind
         </AppText>
       ) : null}

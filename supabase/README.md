@@ -67,6 +67,45 @@ await supabase.auth.signUp({
 
 The student number is unique within a university, but may exist at another university. The Auth trigger atomically redeems the join code, always assigns the `student` role, and removes the one-time signup fields (including profile PII, join code, legal flags, and authority-like values) from Auth metadata after copying the required values into protected tables. A client cannot self-assign admin access.
 
+### First-time Google onboarding
+
+A new Google OAuth user is intentionally allowed to have an Auth session before
+they have a StrathFind profile. After the OAuth callback, call
+`get_my_profile()`. A zero-row result means onboarding is pending, not that the
+Google session is invalid. Collect the campus fields and current legal choices
+in the app, then call:
+
+```text
+complete_google_student_onboarding(
+  p_display_name text,
+  p_phone_e164 text,
+  p_student_number text,
+  p_university_code text,
+  p_terms_accepted boolean,
+  p_terms_version text,
+  p_privacy_notice_acknowledged boolean,
+  p_privacy_notice_version text
+) -> uuid
+```
+
+The RPC is granted only to `authenticated`. It binds the request to
+`auth.uid()`, locks that Auth user to serialize concurrent retries, verifies a
+server-owned `auth.identities` row whose provider is `google`, validates the
+current legal versions, and atomically redeems the university code. It always
+creates a `student`; it accepts no user id, university id, or role parameter.
+Existing complete profiles are returned unchanged, so a lost-response retry
+does not consume another code or overwrite an existing role. Partial existing
+profiles fail closed for trusted support review.
+
+The Auth insert trigger selects the deferred path only from server-maintained
+`raw_app_meta_data.provider = google`; browser-editable `raw_user_meta_data`
+cannot select it. Until onboarding succeeds, the user has no campus profile and
+therefore gains no campus-scoped table or RPC access. Do not put the join code,
+phone, student number, or legal choices in an OAuth redirect URL or OAuth user
+metadata. Send them only as RPC arguments after the callback. Google proves
+control of a Google identity; the active university join code remains the
+campus-membership gate.
+
 The Student/Admin choice on the sign-in screen is only a portal selection. After password authentication, the client reads `role` through `get_my_profile()` and rejects the session when that trusted role does not match the selected portal. Admin accounts must still be provisioned or promoted through the authorised database/admin workflow below.
 
 Signup also writes server-timestamped, append-only rows to `account_legal_acknowledgements`. Auth metadata is only the transport for the explicit signup action and is removed after the profile is created. When the legal text changes, update both constants in `src/lib/legal.ts` and the version checks in a new migration; do not edit an already-applied migration.
@@ -330,7 +369,12 @@ psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
   -f supabase/tests/database/strathfind.sql
 ```
 
-It covers signup authority, student-number uniqueness, lost/found deadlines, private questions, deterministic matching, flag review, claim-gated contact reveal, cross-campus denial, one-time custody codes, masked claim identities, raw identity-column denial, exact opaque photo keys, legacy-path filtering, feed safety, and RLS. The script rolls back all fixtures.
+It covers password and Google signup authority, Google onboarding retries and
+provider verification, student-number uniqueness, lost/found deadlines, private
+questions, deterministic matching, flag review, claim-gated contact reveal,
+cross-campus denial, one-time custody codes, masked claim identities, raw
+identity-column denial, exact opaque photo keys, legacy-path filtering, feed
+safety, and RLS. The script rolls back all fixtures.
 
 ## Upgrade and compatibility notes
 
@@ -338,6 +382,7 @@ It covers signup authority, student-number uniqueness, lost/found deadlines, pri
 - `202608220003_privacy_boundaries.sql` closes peer-profile, reporter/claimant, audit-actor, and photo-uploader lookup paths and adds the canonical claims-listing RPC. It preserves the `found_item_cards` column contract.
 - `202608260001_public_item_feed.sql` adds the bounded, anonymous-safe Strathmore feed RPC. It does not grant anonymous table or Storage access.
 - `202608260002_legal_acceptance.sql` requires the current Terms acceptance and Privacy Notice acknowledgement at signup and stores append-only, server-timestamped records.
+- `202608260004_google_oauth_onboarding.sql` defers profile creation for trusted Google Auth inserts and adds the authenticated, atomic, student-only completion RPC.
 - `found_items` and the original first eleven `found_item_cards` columns are retained to reduce client breakage.
 - New report creation must use `create_item_report`; the former direct insert grant is revoked.
 - Existing rows may have no verification-question row. Their reporter or an admin can backfill one with `update_item_verification_question` before exposing the claim form.

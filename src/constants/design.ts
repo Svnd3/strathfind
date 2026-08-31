@@ -135,6 +135,7 @@ export const type = {
   h1: { fontFamily: systemFont, fontSize: 28, lineHeight: 32, fontWeight: '700', letterSpacing: -0.7 } satisfies TextStyle,
   h2: { fontFamily: systemFont, fontSize: 24, lineHeight: 28, fontWeight: '700', letterSpacing: -0.45 } satisfies TextStyle,
   h3: { fontFamily: systemFont, fontSize: 20, lineHeight: 24, fontWeight: '700', letterSpacing: -0.2 } satisfies TextStyle,
+  wordmark: { fontFamily: 'Decog', fontSize: 20, lineHeight: 24, fontWeight: '400' } satisfies TextStyle,
   body: { fontFamily: systemFont, fontSize: 16, lineHeight: 24, fontWeight: '400' } satisfies TextStyle,
   bodyStrong: { fontFamily: systemFont, fontSize: 16, lineHeight: 22, fontWeight: '600' } satisfies TextStyle,
   support: { fontFamily: systemFont, fontSize: 14, lineHeight: 20, fontWeight: '500' } satisfies TextStyle,
@@ -185,9 +186,20 @@ export function raisedShadow(
 }
 
 export function focusRing(focused: boolean, color: string = lightPalette.wine): ViewStyle {
-  if (!focused) return {};
+  // Web gets an input-modality-aware ring from `*:focus-visible` in
+  // global.css. React Native's `onFocus` also fires for pointer clicks, so
+  // drawing this border on web makes an ordinary click look like a hover
+  // error state.
+  if (!focused || Platform.OS === 'web') return {};
   return {
     borderColor: color,
     borderWidth: 2,
   };
+}
+
+export function hoverShadow(
+  hovered: boolean,
+  shadowColor: string = lightPalette.black,
+): ViewStyle {
+  return hovered && Platform.OS === 'web' ? raisedShadow('sm', shadowColor) : {};
 }
