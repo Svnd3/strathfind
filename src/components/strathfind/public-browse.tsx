@@ -101,16 +101,17 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
             {rows.map((row) => (
               <View key={row[0].id} style={styles.gridRow}>
                 {row.map((item) => (
-                  <ItemCard
-                    compact={width < 900}
-                    item={item}
-                    key={item.id}
-                    narrow={narrowCards}
-                    onOpen={() => openItem(item.id)}
-                    style={styles.gridCard}
-                  />
+                  <View key={item.id} style={styles.gridCell}>
+                    <ItemCard
+                      compact={width < 900}
+                      item={item}
+                      narrow={narrowCards}
+                      onOpen={() => openItem(item.id)}
+                      style={styles.gridCard}
+                    />
+                  </View>
                 ))}
-                {row.length === 1 ? <View aria-hidden style={styles.gridSpacer} /> : null}
+                {row.length === 1 ? <View aria-hidden style={styles.gridCell} /> : null}
               </View>
             ))}
           </View>
@@ -189,8 +190,8 @@ const styles = StyleSheet.create({
   },
   grid: { gap: spacing.sm },
   gridRow: { flexDirection: 'row', alignItems: 'stretch', gap: spacing.sm },
-  gridCard: { flex: 1, minWidth: 0, alignSelf: 'stretch' },
-  gridSpacer: { flex: 1, minWidth: 0 },
+  gridCell: { flex: 1, minWidth: 0 },
+  gridCard: { width: '100%', height: '100%', alignSelf: 'stretch' },
   modalRoot: {
     flex: 1,
     alignItems: 'center',
