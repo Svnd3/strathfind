@@ -109,13 +109,14 @@ function SegmentButton<T extends string>({ option, selected, onChange }: Segment
       onPress={() => onChange(option.value)}
       style={({ pressed }) => [
         {
-          flexBasis: 88,
+          flexBasis: 64,
           flexGrow: 1,
-          minWidth: 0,
+          flexShrink: 1,
+          minWidth: 64,
           minHeight: layout.touchTarget,
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: spacing.sm,
+          paddingHorizontal: spacing.xxs,
           borderRadius: radius.sm,
           backgroundColor: selected
             ? pressed || hovered

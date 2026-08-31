@@ -119,6 +119,18 @@ avatar_path, created_at, updated_at
 
 Ordinary profile queries deliberately do not have column permission for `student_number`. Same-campus admins may call `list_university_members()`.
 
+Profile avatars live in the private `profile-avatars` bucket. An authenticated
+user may read, upload, replace, or delete only an exact two-segment key owned by
+their profile:
+
+```text
+{profile_id}/{opaque-file-name}
+```
+
+The database validates the same format before saving `profiles.avatar_path`.
+Files are limited to 5 MB and the approved image MIME types; use a short-lived
+signed URL to display the current user's avatar.
+
 For a new production project, create Strathmore University and a random, one-use
 bootstrap code from a trusted SQL session. Keep the exact
 `strathmore-university` slug because the anonymous feed is deliberately anchored
@@ -201,10 +213,13 @@ Read the campus feed from `found_item_cards`. Its columns are:
 ```text
 id, title, category, color, location_found, found_at, handoff_due_at,
 status, is_mine, cover_photo_path, created_at, kind, description,
-location, observed_at, handoff_point, contact_name, masked_phone
+location, observed_at, handoff_point, contact_name, masked_phone, returned_at
 ```
 
 The first eleven columns preserve the original view order. The feed is same-campus only and does not contain a full phone number, student number, ownership question, claim evidence, or user identifier. Personal `contact_name` values are masked server-side to first name plus last initial (for example, `Amina K.`); an official Lost & Found desk name remains intact after custody. The `location` and `observed_at` aliases let new clients use neutral lost/found wording while legacy clients may continue reading `location_found` and `found_at`.
+Returned reports remain discoverable to the campus for less than 72 hours and
+are hidden from everyone else at the 72-hour boundary. Their reporter can still
+see them in account history until the 30-day retention worker removes them.
 
 Signed-out clients must use the deliberately narrow public RPC:
 
@@ -224,6 +239,19 @@ archived reports. It intentionally omits user identifiers, contacts,
 verification material, claims, audit data, and Storage paths. Anonymous users
 have no direct table access. Create the production university row before
 launch or this feed will correctly return no items.
+
+The separate recent-returns surface is safe for signed-out and signed-in
+clients:
+
+```text
+get_recent_returned_item_cards(p_limit integer default 48)
+  -> id, kind, title, category, color, description, location,
+     observed_at, handoff_due_at, status, handoff_point, created_at, returned_at
+```
+
+It is fixed to active Strathmore data, caps results at 100, and returns only
+`returned` reports whose immutable `returned_at` is less than 72 hours old.
+The normal public feed continues to exclude all returned reports.
 
 Upload up to six approved image types to the private `found-item-photos` bucket, then insert metadata into `found_item_photos`. Paths must be:
 
@@ -337,6 +365,29 @@ select * from public.process_handoff_deadlines();
 
 Only found reports receive one-hour reminders or become `handoff_due`. Lost reports never enter this job, and `return_arranged` reports are excluded so an approved pickup cannot be overwritten by the deadline worker.
 
+When a report first transitions to `returned`, the database records an
+immutable `returned_at`. A trusted service worker must capture one cutoff,
+select reports with `returned_at <= cutoff - interval '30 days'`, and delete
+all of their objects from the `found-item-photos` bucket. It may then pass only
+the fully cleaned report IDs and that same cutoff to the service-role function:
+
+```sql
+select public.process_returned_item_retention(
+  array['00000000-0000-0000-0000-000000000000'::uuid],
+  '2026-09-01T02:23:00Z'::timestamptz
+);
+```
+
+It permanently removes eligible report rows and their claim, custody, contact
+audit, status-history, and cascading dependent records at 30 days, returning
+the number of reports deleted. The migration intentionally does not schedule
+this database function: deleting database rows first would orphan private
+Storage bytes and erase the paths needed to find them. Deployment must provide
+a trusted daily worker that uses one fixed cutoff, deletes every selected
+object from the `found-item-photos` bucket through the Storage API, and only
+then invokes the SQL worker with the IDs whose object cleanup fully succeeded.
+Do not schedule the SQL statement by itself with `pg_cron`.
+
 ## Item flags and admin review
 
 Same-campus students can report unsafe or inaccurate content with:
@@ -383,6 +434,7 @@ safety, and RLS. The script rolls back all fixtures.
 - `202608260001_public_item_feed.sql` adds the bounded, anonymous-safe Strathmore feed RPC. It does not grant anonymous table or Storage access.
 - `202608260002_legal_acceptance.sql` requires the current Terms acceptance and Privacy Notice acknowledgement at signup and stores append-only, server-timestamped records.
 - `202608260004_google_oauth_onboarding.sql` defers profile creation for trusted Google Auth inserts and adds the authenticated, atomic, student-only completion RPC.
+- `202608310001_returned_retention_and_avatars.sql` adds immutable return timestamps, the 72-hour recent-return surfaces, service-only 30-day database retention, and a private self-owned avatar bucket.
 - `found_items` and the original first eleven `found_item_cards` columns are retained to reduce client breakage.
 - New report creation must use `create_item_report`; the former direct insert grant is revoked.
 - Existing rows may have no verification-question row. Their reporter or an admin can backfill one with `update_item_verification_question` before exposing the claim form.

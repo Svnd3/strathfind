@@ -1,39 +1,57 @@
 import { router } from 'expo-router';
-import { Filter, PackageOpen, Plus, Search, X } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Building2, Filter, LayoutGrid, PackageOpen, Plus, Search, X } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from 'react-native';
 
-import { layout, radius, raisedShadow, spacing } from '@/constants/design';
-import { filterItems } from '@/lib/item-utils';
+import { focusRing, layout, radius, raisedShadow, spacing } from '@/constants/design';
+import { filterItems, isRecentlyReturned } from '@/lib/item-utils';
 import { categories } from '@/lib/catalog';
-import type { ItemCategory, ItemKind } from '@/lib/types';
+import type { ItemCategory } from '@/lib/types';
 import { useAppState } from '@/state';
 import { useAppTheme } from '@/theme/app-theme';
 
 import { BrandLockup } from './brand';
-import { IconButton, PrimaryButton, SecondaryButton } from './buttons';
+import { IconButton, PrimaryButton, TextButton } from './buttons';
 import { EmptyState } from './content';
 import { TextField } from './fields';
 import { ItemCard } from './item-card';
 import { ContentShell, Screen } from './layout';
+import { RouteLoadingScreen } from './route-loading';
 import { Chip } from './selection';
 import { AppText } from './typography';
 import { getCategoryLabel } from './category-art';
 
 type CategoryFilter = 'all' | ItemCategory;
+type BrowseMode = 'active' | 'reunited';
+type ReportView = 'all' | 'desk';
 
-export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
+export function PublicBrowseScreen({ mode = 'active' }: { mode?: BrowseMode }) {
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
-  const { isAuthenticated, items } = useAppState();
+  const { isAuthenticated, items, loading } = useAppState();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('all');
+  const [reportView, setReportView] = useState<ReportView>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const narrowCards = width < 640;
-  const title = kind === 'lost' ? 'Lost' : 'Found';
+  const reunited = mode === 'reunited';
+  const title = reunited ? 'Reunited' : 'Lost & Found';
   const filtered = useMemo(
-    () => filterItems(items, query, kind, category).filter((item) => item.status !== 'returned'),
-    [category, items, kind, query],
+    () => filterItems(items, query, 'all', category).filter((item) => {
+      if (reunited) return isRecentlyReturned(item);
+      if (item.status === 'returned') return false;
+      return reportView === 'all' || item.status === 'at_office';
+    }),
+    [category, items, query, reportView, reunited],
   );
   const rows = useMemo(
     () => Array.from(
@@ -42,6 +60,11 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
     ),
     [filtered],
   );
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const openItem = (id: string) => {
     const destination = `/item/${encodeURIComponent(id)}`;
@@ -53,28 +76,82 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
   };
 
   const report = () => {
-    router.push({ pathname: '/report-found', params: { kind } });
+    router.push('/report-found');
   };
+
+  const hasSearchFilters = Boolean(query.trim()) || category !== 'all';
+  const emptyTitle = hasSearchFilters
+    ? 'No matches'
+    : reunited
+      ? 'No reunions to show yet'
+      : reportView === 'desk'
+        ? 'Nothing is at the desk right now'
+        : 'No active reports yet';
+  const emptyActionLabel = hasSearchFilters
+    ? 'Clear search'
+    : reunited
+      ? 'Browse reports'
+      : reportView === 'desk'
+        ? 'View all reports'
+        : 'Report an item';
+
+  const handleEmptyAction = () => {
+    if (hasSearchFilters) {
+      setQuery('');
+      setCategory('all');
+      return;
+    }
+    if (reunited) {
+      router.push('/lost');
+      return;
+    }
+    if (reportView === 'desk') {
+      setReportView('all');
+      return;
+    }
+    report();
+  };
+
+  if (loading) {
+    return <RouteLoadingScreen label={`Loading ${reunited ? 'reunions' : 'reports'}`} />;
+  }
 
   return (
     <Screen edges={['top', 'left', 'right']}>
       <ContentShell style={styles.shell}>
         <View style={styles.topbar}>
           <BrandLockup markSize={40} />
-          <SecondaryButton icon={Plus} onPress={report} style={styles.topbarAction}>Report</SecondaryButton>
+          <TextButton
+            accessibilityHint="Opens the lost and found report form"
+            accessibilityLabel="Report an item"
+            icon={Plus}
+            onPress={report}
+            style={styles.topbarAction}
+          >
+            Report
+          </TextButton>
         </View>
 
         <View style={styles.heading}>
           <View style={{ flex: 1, minWidth: 0, gap: spacing.xxs }}>
             <AppText accessibilityRole="header" variant="h1">{title}</AppText>
             <AppText color={colors.muted} variant="support">
-              {kind === 'lost' ? 'Items people are looking for.' : 'Items waiting to get home.'}
+              {reunited
+                ? 'Belongings returned to their owners. Each reunion stays visible for 72 hours.'
+                : 'Browse active lost and found reports from around campus.'}
             </AppText>
           </View>
           <AppText color={colors.muted} variant="support">
-            {filtered.length} {filtered.length === 1 ? 'report' : 'reports'}
+            {filtered.length} {filtered.length === 1 ? (reunited ? 'item' : 'report') : (reunited ? 'items' : 'reports')}
           </AppText>
         </View>
+
+        {!reunited ? (
+          <ReportViewTabs
+            onChange={setReportView}
+            value={reportView}
+          />
+        ) : null}
 
         <View style={styles.searchRow}>
           <TextField
@@ -106,6 +183,7 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
                       compact={width < 900}
                       item={item}
                       narrow={narrowCards}
+                      now={now}
                       onOpen={() => openItem(item.id)}
                       style={styles.gridCard}
                     />
@@ -117,17 +195,10 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
           </View>
         ) : (
           <EmptyState
-            actionLabel={query || category !== 'all' ? 'Clear search' : `Report ${kind} item`}
+            actionLabel={emptyActionLabel}
             icon={PackageOpen}
-            onAction={() => {
-              if (query || category !== 'all') {
-                setQuery('');
-                setCategory('all');
-              } else {
-                report();
-              }
-            }}
-            title={query || category !== 'all' ? 'No matches' : `No ${kind} reports yet`}
+            onAction={handleEmptyAction}
+            title={emptyTitle}
           />
         )}
       </ContentShell>
@@ -135,8 +206,9 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
       <Modal animationType="fade" onRequestClose={() => setFiltersOpen(false)} transparent visible={filtersOpen}>
         <View style={[styles.modalRoot, { backgroundColor: colors.scrim }]}>
           <Pressable
-            accessibilityLabel="Close filters"
-            accessibilityRole="button"
+            accessible={false}
+            aria-hidden
+            focusable={false}
             onPress={() => setFiltersOpen(false)}
             style={StyleSheet.absoluteFill}
           />
@@ -170,6 +242,65 @@ export function PublicBrowseScreen({ kind }: { kind: ItemKind }) {
   );
 }
 
+function ReportViewTabs({
+  onChange,
+  value,
+}: {
+  onChange: (value: ReportView) => void;
+  value: ReportView;
+}) {
+  const { colors } = useAppTheme();
+  const [focused, setFocused] = useState<ReportView | null>(null);
+  const options = [
+    { icon: LayoutGrid, label: 'All reports', value: 'all' },
+    { icon: Building2, label: 'At the desk', value: 'desk' },
+  ] as const;
+
+  return (
+    <View accessibilityLabel="Browse reports" accessibilityRole="radiogroup" style={styles.browseControl}>
+      <AppText color={colors.muted} variant="support">Browse reports</AppText>
+      <View style={[styles.browseTabs, { borderBottomColor: colors.lineSoft }]}>
+        {options.map((option) => {
+          const Icon = option.icon;
+          const selected = value === option.value;
+          return (
+            <Pressable
+              accessibilityLabel={option.label}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected }}
+              key={option.value}
+              onBlur={() => setFocused(null)}
+              onFocus={() => setFocused(option.value)}
+              onPress={() => onChange(option.value)}
+              style={({ hovered, pressed }) => [
+                styles.browseTab,
+                {
+                  backgroundColor: hovered || pressed ? colors.wineSoft : 'transparent',
+                },
+                focusRing(focused === option.value, colors.wine),
+                Platform.OS === 'web' ? ({ cursor: 'pointer' } as ViewStyle) : null,
+              ]}
+            >
+              <Icon
+                aria-hidden
+                color={selected ? colors.wine : colors.muted}
+                size={18}
+                strokeWidth={selected ? 2.5 : 2}
+              />
+              <AppText color={selected ? colors.wine : colors.inkSoft} variant="support">
+                {option.label}
+              </AppText>
+              {selected ? (
+                <View aria-hidden style={[styles.browseIndicator, { backgroundColor: colors.wine }]} />
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   shell: { gap: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
   topbar: {
@@ -179,8 +310,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
-  topbarAction: { alignSelf: 'center' },
+  topbarAction: { alignSelf: 'center', paddingHorizontal: spacing.sm },
   heading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: spacing.md },
+  browseControl: { width: '100%', maxWidth: 380, gap: spacing.xxs },
+  browseTabs: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderBottomWidth: 1,
+  },
+  browseTab: {
+    position: 'relative',
+    minHeight: layout.touchTarget,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  browseIndicator: {
+    position: 'absolute',
+    right: spacing.sm,
+    bottom: -1,
+    left: spacing.sm,
+    height: 3,
+    borderRadius: radius.pill,
+  },
   searchRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm },
   search: { flex: 1, minWidth: 0 },
   filterButton: {

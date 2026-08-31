@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, ArrowRight, Camera, Check, Clock3, LockKeyhole, Search } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import {
   AppText,
@@ -11,9 +11,9 @@ import {
   CategoryArt,
   Chip,
   ContentShell,
+  IconButton,
   PrimaryButton,
   Screen,
-  SecondaryButton,
   SegmentedControl,
   Surface,
   TextArea,
@@ -25,13 +25,14 @@ import { radius, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
 import { categories, handoffPoints } from '@/lib/catalog';
 import { readPreference, writePreference } from '@/lib/preferences';
+import { parseReportOccurrence, validateReportStep } from '@/lib/report-form';
 import type { ItemCategory, ItemKind, ReportDraft } from '@/lib/types';
 import { useAppState } from '@/state';
 import { useAppTheme } from '@/theme/app-theme';
 
 type TimeChoice = 'now' | 'earlier' | 'yesterday' | 'custom';
 const PENDING_REPORT_KEY = 'strathfind.pending-report.v1';
-const stepLabels = ['Item', 'Place', 'Review'] as const;
+const stepLabels = ['Item details', 'Where and when', 'Review'] as const;
 
 interface PendingReport {
   savedAt: string;
@@ -60,11 +61,6 @@ function toLocalTime(value: Date) {
   return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
 }
 
-function parseOccurrence(date: string, time: string) {
-  const value = new Date(`${date}T${time}:00`);
-  return Number.isNaN(value.getTime()) ? null : value;
-}
-
 function quickTime(choice: Exclude<TimeChoice, 'custom'>) {
   const offset = choice === 'now' ? 0 : choice === 'earlier' ? 4 : 24;
   return new Date(Date.now() - offset * 3_600_000);
@@ -77,7 +73,7 @@ export default function ReportScreen() {
   const compact = width < 700;
   const { createReport, isAuthenticated, loading } = useAppState();
   const [referenceNow] = useState(() => Date.now());
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState<0 | 1 | 2>(0);
   const [kind, setKind] = useState<ItemKind>(params.kind === 'lost' ? 'lost' : 'found');
   const [category, setCategory] = useState<ItemCategory | null>(null);
   const [title, setTitle] = useState('');
@@ -92,11 +88,23 @@ export default function ReportScreen() {
   const [imageUri, setImageUri] = useState<string>();
   const [error, setError] = useState('');
 
-  const progress = useMemo(() => [0, 1, 2].map((value) => value <= step), [step]);
+  const reportValues = useMemo(
+    () => ({
+      category,
+      title,
+      color,
+      location,
+      privateClue,
+      occurrenceDate,
+      occurrenceTime,
+    }),
+    [category, color, location, occurrenceDate, occurrenceTime, privateClue, title],
+  );
   const occurredAt = useMemo(
-    () => parseOccurrence(occurrenceDate, occurrenceTime),
+    () => parseReportOccurrence(occurrenceDate, occurrenceTime),
     [occurrenceDate, occurrenceTime],
   );
+  const progressWidth: `${number}%` = step === 0 ? '33.333%' : step === 1 ? '66.667%' : '100%';
   const handoffDeadline = occurredAt
     ? new Date(occurredAt.getTime() + 24 * 3_600_000)
     : null;
@@ -117,7 +125,19 @@ export default function ReportScreen() {
       setPrivateClue(draft.privateClue);
       setHandoffPoint(draft.handoffPoint);
       setImageUri(draft.imageUri);
-      setStep(2);
+      const restoredValues = {
+        category: draft.category,
+        title: draft.title,
+        color: draft.color,
+        location: draft.location,
+        privateClue: draft.privateClue,
+        occurrenceDate: draft.occurrenceDate,
+        occurrenceTime: draft.occurrenceTime,
+      };
+      const itemError = validateReportStep(0, restoredValues);
+      const placeError = validateReportStep(1, restoredValues);
+      setStep(itemError ? 0 : placeError ? 1 : 2);
+      setError(itemError ?? placeError ?? '');
     });
   }, [params.restore]);
 
@@ -156,37 +176,34 @@ export default function ReportScreen() {
     }
   };
 
-  const validateStep = () => {
-    if (step === 0 && (!category || title.trim().length < 2 || color.trim().length < 2)) {
-      setError('Choose a category, then add a short title and colour.');
-      return false;
-    }
-    if (step === 1 && (location.trim().length < 2 || privateClue.trim().length < 5)) {
-      setError('Add a location and a useful private clue.');
-      return false;
-    }
-    if (step === 1 && (!occurredAt || occurredAt.getTime() > Date.now() + 5 * 60_000)) {
-      setError('Enter a valid date and time that is not in the future.');
-      return false;
+  const next = () => {
+    if (step === 2) return;
+    const validationError = validateReportStep(step, reportValues);
+    if (validationError) {
+      setError(validationError);
+      return;
     }
     setError('');
-    return true;
-  };
-
-  const next = () => {
-    if (!validateStep()) return;
-    setStep((current) => Math.min(2, current + 1));
+    setStep(step === 0 ? 1 : 2);
     void haptics.select();
   };
 
   const publish = async () => {
-    if (!occurredAt) {
-      setError('Enter a valid date and time.');
+    const itemError = validateReportStep(0, reportValues);
+    if (itemError) {
+      setError(itemError);
+      setStep(0);
       return;
     }
     if (!category) {
-      setError('Choose a category.');
+      setError('Choose a category, then add a short title and colour.');
       setStep(0);
+      return;
+    }
+    const placeError = validateReportStep(1, reportValues);
+    if (placeError || !occurredAt) {
+      setError(placeError ?? 'Enter a valid date and time that is not in the future.');
+      setStep(1);
       return;
     }
     const draft: ReportDraft = {
@@ -231,10 +248,15 @@ export default function ReportScreen() {
 
   return (
     <Screen>
-      <ContentShell maxWidth={840} style={styles.shell}>
+      <ContentShell maxWidth={680} style={styles.shell}>
         <View style={styles.heading}>
           <TextButton icon={ArrowLeft} onPress={() => router.back()}>Back</TextButton>
-          <AppText accessibilityRole="header" variant="h1">Report {kind}</AppText>
+          <View style={styles.titleBlock}>
+            <AppText accessibilityRole="header" variant="h1">Report an item</AppText>
+            <AppText color={colors.muted} variant="body">
+              Share clear public details, and keep one identifying clue private.
+            </AppText>
+          </View>
         </View>
 
         <View
@@ -246,38 +268,19 @@ export default function ReportScreen() {
           <AppText color={colors.muted} variant="micro">
             STEP {step + 1} OF 3 · {stepLabels[step].toUpperCase()}
           </AppText>
-          <View style={styles.progress}>
-          {progress.map((active, index) => (
-            <View key={index} style={styles.progressGroup}>
-              <View
-                style={[
-                  styles.stepDot,
-                  { backgroundColor: colors.surfaceStrong, borderColor: colors.line },
-                  active && { backgroundColor: colors.primary, borderColor: colors.primary },
-                ]}
-              >
-                {index < step
-                  ? <Check color={colors.onPrimary} size={15} strokeWidth={3} />
-                  : <AppText color={active ? colors.onPrimary : colors.muted} variant="micro">{index + 1}</AppText>}
-              </View>
-              {index < 2 ? (
-                <View
-                  style={[
-                    styles.progressLine,
-                    { backgroundColor: index < step ? colors.primary : colors.lineSoft },
-                  ]}
-                />
-              ) : null}
-            </View>
-          ))}
+          <View style={[styles.progressTrack, { backgroundColor: colors.lineSoft }]}>
+            <View style={[styles.progressFill, { backgroundColor: colors.primary, width: progressWidth }]} />
           </View>
         </View>
 
-        <Surface padding={compact ? 'md' : 'xl'} tone="strong" style={styles.form}>
+        <View style={styles.form}>
           {step === 0 ? (
             <View style={styles.stepContent}>
               <View style={styles.stepHeading}>
-                <AppText variant="h2">Item</AppText>
+                <AppText accessibilityRole="header" variant="h2">Item details</AppText>
+                <AppText color={colors.muted} variant="support">
+                  Add enough detail for someone to recognise the item.
+                </AppText>
               </View>
               <SegmentedControl
                 label="Report type"
@@ -285,37 +288,13 @@ export default function ReportScreen() {
                 options={[{ label: 'I found it', value: 'found' }, { label: 'I lost it', value: 'lost' }]}
                 value={kind}
               />
-              <View style={[styles.photoRow, !compact && styles.photoRowWide]}>
-                <Pressable
-                  accessibilityLabel={imageUri ? 'Change item photo' : 'Add item photo, optional'}
-                  accessibilityRole="button"
-                  onPress={() => void pickImage()}
-                  style={({ pressed }) => [
-                    styles.photoPreview,
-                    { backgroundColor: colors.inset, borderColor: colors.line },
-                    pressed && { opacity: 0.78 },
-                  ]}
-                >
-                  {imageUri
-                    ? <Image accessibilityLabel="Selected item photo" contentFit="cover" source={{ uri: imageUri }} style={StyleSheet.absoluteFill} />
-                    : (
-                      <View style={styles.emptyPhoto}>
-                        <Camera aria-hidden color={colors.wine} size={30} strokeWidth={2} />
-                        <AppText color={colors.wine} variant="micro">ADD PHOTO</AppText>
-                      </View>
-                    )}
-                </Pressable>
-                <View style={styles.photoCopy}>
-                  <AppText variant="bodyStrong">Photo · optional</AppText>
-                  <AppText color={colors.muted} variant="support">Avoid faces and ID numbers.</AppText>
-                  <SecondaryButton icon={Camera} onPress={() => void pickImage()}>{imageUri ? 'Change photo' : 'Choose photo'}</SecondaryButton>
+              <View style={styles.choiceGroup}>
+                <AppText variant="support">Category</AppText>
+                <View style={styles.chipWrap}>
+                  {categories.map((value) => (
+                    <Chip key={value} label={getCategoryLabel(value)} onPress={() => setCategory(value)} selected={category === value} />
+                  ))}
                 </View>
-              </View>
-              <AppText variant="support">Category</AppText>
-              <View style={styles.chipWrap}>
-                {categories.map((value) => (
-                  <Chip key={value} label={getCategoryLabel(value)} onPress={() => setCategory(value)} selected={category === value} />
-                ))}
               </View>
               <View style={[styles.fieldRow, !compact && styles.fieldRowWide]}>
                 <TextField
@@ -342,13 +321,32 @@ export default function ReportScreen() {
                 placeholder="A few visible details. Keep one identifying detail private."
                 value={description}
               />
+              <View style={[styles.photoRow, { borderColor: colors.lineSoft }]}>
+                <View style={[styles.photoPreview, { backgroundColor: colors.inset }]}>
+                  {imageUri
+                    ? <Image accessibilityLabel="Selected item photo" contentFit="cover" source={{ uri: imageUri }} style={StyleSheet.absoluteFill} />
+                    : <Camera aria-hidden color={colors.wine} size={24} strokeWidth={2} />}
+                </View>
+                <View style={styles.photoCopy}>
+                  <AppText variant="bodyStrong">Photo · optional</AppText>
+                  <AppText color={colors.muted} variant="support">Avoid faces and ID numbers.</AppText>
+                </View>
+                <IconButton
+                  accessibilityLabel={imageUri ? 'Change item photo' : 'Add item photo'}
+                  icon={Camera}
+                  onPress={() => void pickImage()}
+                />
+              </View>
             </View>
           ) : null}
 
           {step === 1 ? (
             <View style={styles.stepContent}>
               <View style={styles.stepHeading}>
-                <AppText variant="h2">Place &amp; time</AppText>
+                <AppText accessibilityRole="header" variant="h2">Where and when</AppText>
+                <AppText color={colors.muted} variant="support">
+                  This helps narrow matches around campus.
+                </AppText>
               </View>
               <CampusLocationField
                 label={kind === 'found' ? 'Where was it found?' : 'Where was it last seen?'}
@@ -390,15 +388,9 @@ export default function ReportScreen() {
                   value={occurrenceTime}
                 />
               </View>
-              <Surface padding="md" tone="inset" style={styles.privateBox}>
-                <LockKeyhole color={colors.wine} size={24} />
-                <View style={{ flex: 1, gap: spacing.xxs }}>
-                  <AppText variant="bodyStrong">Private clue</AppText>
-                  <AppText color={colors.muted} variant="support">Used to verify the owner.</AppText>
-                </View>
-              </Surface>
               <TextArea
-                label="Ownership check"
+                helpText="Only claim reviewers see this. Use a detail that is not in the public description."
+                label="Private ownership clue"
                 maxLength={140}
                 onChangeText={setPrivateClue}
                 placeholder="What is written on the sticker underneath?"
@@ -412,7 +404,9 @@ export default function ReportScreen() {
                       <Chip key={point} label={point} onPress={() => setHandoffPoint(point)} selected={handoffPoint === point} />
                     ))}
                   </View>
-                  <AppText color={colors.muted} variant="support">Unclaimed after 24h? Take it here.</AppText>
+                  <AppText color={colors.muted} variant="support">
+                    If it remains unclaimed for 24 hours, take it here.
+                  </AppText>
                 </View>
               ) : null}
             </View>
@@ -421,13 +415,21 @@ export default function ReportScreen() {
           {step === 2 ? (
             <View style={styles.stepContent}>
               <View style={styles.stepHeading}>
-                <AppText variant="h2">Review</AppText>
+                <AppText accessibilityRole="header" variant="h2">Review</AppText>
+                <AppText color={colors.muted} variant="support">
+                  Check the public details before publishing.
+                </AppText>
               </View>
               <Surface padding="md" tone="strong" style={styles.reviewCard}>
                 {imageUri ? (
-                  <Image accessibilityLabel={`Photo of ${title}`} contentFit="cover" source={{ uri: imageUri }} style={styles.reviewImage} />
+                  <Image
+                    accessibilityLabel={`Photo of ${title}`}
+                    contentFit="cover"
+                    source={{ uri: imageUri }}
+                    style={[styles.reviewImage, compact && styles.reviewImageCompact]}
+                  />
                 ) : category ? (
-                  <CategoryArt category={category} size={112} />
+                  <CategoryArt category={category} size={compact ? 88 : 112} />
                 ) : null}
                 <View style={styles.reviewCopy}>
                   <AppText color={colors.muted} variant="micro">{kind.toUpperCase()} · {category ? getCategoryLabel(category).toUpperCase() : 'UNCATEGORISED'}</AppText>
@@ -454,17 +456,32 @@ export default function ReportScreen() {
 
           {error ? <AppText accessibilityLiveRegion="polite" color={colors.danger} variant="support">{error}</AppText> : null}
 
-          <View style={styles.actions}>
+          <View
+            style={[
+              styles.actions,
+              compact && styles.actionsCompact,
+              step === 0 && !compact && styles.actionsEnd,
+            ]}
+          >
             {step > 0 ? (
-              <TextButton icon={ArrowLeft} onPress={() => { setStep((current) => current - 1); setError(''); }}>Back</TextButton>
-            ) : <View />}
+              <TextButton
+                fullWidth={compact}
+                icon={ArrowLeft}
+                onPress={() => {
+                  setStep((current) => current === 2 ? 1 : 0);
+                  setError('');
+                }}
+              >
+                Previous
+              </TextButton>
+            ) : null}
             {step < 2
-              ? <PrimaryButton icon={ArrowRight} iconPosition="right" onPress={next}>Continue</PrimaryButton>
-              : <PrimaryButton icon={isAuthenticated ? Check : LockKeyhole} loading={loading} onPress={() => void publish()}>
+              ? <PrimaryButton fullWidth={compact} icon={ArrowRight} iconPosition="right" onPress={next}>Continue</PrimaryButton>
+              : <PrimaryButton fullWidth={compact} icon={isAuthenticated ? Check : LockKeyhole} loading={loading} onPress={() => void publish()}>
                   {isAuthenticated ? 'Publish report' : 'Sign in to publish'}
                 </PrimaryButton>}
           </View>
-        </Surface>
+        </View>
       </ContentShell>
     </Screen>
   );
@@ -487,40 +504,44 @@ function ReviewRow({ icon: Icon, title, copy }: { icon: typeof Clock3; title: st
 }
 
 const styles = StyleSheet.create({
-  shell: { gap: spacing.xl, paddingTop: spacing.xl },
-  heading: { gap: spacing.md },
-  progressBlock: { width: '100%', maxWidth: 420, alignSelf: 'center', gap: spacing.xs },
-  progress: { flexDirection: 'row', alignItems: 'center', maxWidth: 420, alignSelf: 'center' },
-  progressGroup: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  stepDot: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1 },
-  progressLine: { flex: 1, height: 2 },
-  form: { gap: spacing.lg },
+  shell: { gap: spacing.lg, paddingTop: spacing.lg },
+  heading: { gap: spacing.sm },
+  titleBlock: { gap: spacing.xs },
+  progressBlock: { width: '100%', gap: spacing.xs },
+  progressTrack: { width: '100%', height: 4, overflow: 'hidden', borderRadius: radius.pill },
+  progressFill: { height: '100%', borderRadius: radius.pill },
+  form: { gap: spacing.lg, paddingBottom: spacing.lg },
   stepContent: { gap: spacing.lg },
   stepHeading: { gap: spacing.xs },
-  photoRow: { gap: spacing.md },
-  photoRowWide: { flexDirection: 'row', alignItems: 'center' },
-  photoPreview: {
-    width: 164,
-    height: 164,
-    alignSelf: 'center',
-    overflow: 'hidden',
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderStyle: 'dashed',
+  photoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
   },
-  emptyPhoto: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
-  photoCopy: { flex: 1, gap: spacing.xs },
+  photoPreview: {
+    width: 72,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderRadius: radius.sm,
+  },
+  photoCopy: { flex: 1, minWidth: 0, gap: spacing.xxs },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   fieldRow: { gap: spacing.md },
   fieldRowWide: { flexDirection: 'row' },
   choiceGroup: { gap: spacing.sm },
   choiceLabel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  privateBox: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   reviewCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   reviewImage: { width: 112, height: 112, borderRadius: radius.lg },
+  reviewImageCompact: { width: 88, height: 88, borderRadius: radius.md },
   reviewCopy: { flex: 1, gap: spacing.xs },
   reviewList: { gap: spacing.sm },
   reviewRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   reviewIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, paddingTop: spacing.sm },
+  actionsCompact: { flexDirection: 'column', alignItems: 'stretch' },
+  actionsEnd: { justifyContent: 'flex-end' },
 });

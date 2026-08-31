@@ -27,6 +27,10 @@ export interface CampusUser {
   university: string;
   universityId?: string;
   campusId: string;
+  /** Short-lived URL used only on authenticated profile surfaces. */
+  avatarUrl?: string;
+  /** Private Storage key retained so a replacement can remove the old object. */
+  avatarPath?: string;
 }
 
 export interface LostFoundItem {
@@ -48,6 +52,7 @@ export interface LostFoundItem {
   privateClue?: string;
   handoffPoint?: string;
   createdAt: string;
+  returnedAt?: string;
   matchScore?: number;
 }
 

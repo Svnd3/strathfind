@@ -106,6 +106,7 @@ export default function ItemDetailScreen() {
 
   const ownsReport = item.ownerId === user?.id || item.finderId === user?.id;
   const isAdmin = user?.role === 'admin';
+  const isReturned = item.status === 'returned';
   const claimAccepted = myClaim?.status === 'accepted';
   const acceptedManagedClaim = managedClaims.find((claim) => claim.status === 'accepted');
   const handoffCode = issuedHandoff?.itemId === item.id ? issuedHandoff.code : undefined;
@@ -219,10 +220,25 @@ export default function ItemDetailScreen() {
 
             <View style={styles.metaGrid}>
               <Meta icon={MapPin} label="Area" value={item.location} />
-              <Meta icon={Clock3} label={item.kind === 'found' ? 'Custody' : 'Report'} value={handoffLabel(item)} urgent={item.status === 'handoff_due'} />
+              <Meta
+                icon={Clock3}
+                label={isReturned ? 'Outcome' : item.kind === 'found' ? 'Custody' : 'Report'}
+                value={handoffLabel(item)}
+                urgent={item.status === 'handoff_due'}
+              />
             </View>
 
-            {item.kind === 'found' ? (
+            {isReturned ? (
+              <Surface padding="md" tone="inset" style={styles.handoffBox}>
+                <CheckCircle2 color={colors.success} size={23} />
+                <View style={{ flex: 1, gap: spacing.xxs }}>
+                  <AppText color={colors.ink} variant="bodyStrong">Reunited with its owner</AppText>
+                  <AppText color={colors.muted} variant="support">
+                    This report is closed and remains in Reunited for 72 hours.
+                  </AppText>
+                </View>
+              </Surface>
+            ) : item.kind === 'found' ? (
               <Surface padding="md" tone={item.status === 'handoff_due' ? 'strong' : 'inset'} style={styles.handoffBox}>
                 <Building2 color={item.status === 'handoff_due' ? colors.danger : colors.wine} size={23} />
                 <View style={{ flex: 1, gap: spacing.xxs }}>
@@ -254,54 +270,56 @@ export default function ItemDetailScreen() {
               </Surface>
             ) : null}
 
-            <Surface padding="lg" tone="strong" style={styles.contactCard}>
-              <View style={styles.contactHeading}>
-                <View style={[styles.holderAvatar, { backgroundColor: colors.primary }]}>
-                  <AppText color={colors.onPrimary} variant="bodyStrong">{item.holderName.slice(0, 1)}</AppText>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <AppText variant="bodyStrong">{item.status === 'at_office' ? 'Campus Lost & Found' : item.holderName}</AppText>
-                  <View style={styles.verifiedLine}>
-                    <ShieldCheck color={colors.success} size={15} />
-                    <AppText color={colors.success} variant="support">Verified campus contact</AppText>
+            {!isReturned ? (
+              <Surface padding="lg" tone="strong" style={styles.contactCard}>
+                <View style={styles.contactHeading}>
+                  <View style={[styles.holderAvatar, { backgroundColor: colors.primary }]}>
+                    <AppText color={colors.onPrimary} variant="bodyStrong">{item.holderName.slice(0, 1)}</AppText>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <AppText variant="bodyStrong">{item.status === 'at_office' ? 'Campus Lost & Found' : item.holderName}</AppText>
+                    <View style={styles.verifiedLine}>
+                      <ShieldCheck color={colors.success} size={15} />
+                      <AppText color={colors.success} variant="support">Verified campus contact</AppText>
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <View style={[styles.maskedRow, { backgroundColor: colors.inset }]}>
-                <Phone color={colors.wine} size={20} />
-                <AppText variant="bodyStrong">{contact ?? item.maskedPhone}</AppText>
-                {!contact ? <LockKeyhole color={colors.muted} size={17} /> : null}
-              </View>
+                <View style={[styles.maskedRow, { backgroundColor: colors.inset }]}>
+                  <Phone color={colors.wine} size={20} />
+                  <AppText variant="bodyStrong">{contact ?? item.maskedPhone}</AppText>
+                  {!contact ? <LockKeyhole color={colors.muted} size={17} /> : null}
+                </View>
 
-              {isAdmin ? (
-                <AppText color={colors.muted} variant="support">Audited access</AppText>
-              ) : ownsReport ? (
-                <AppText color={colors.muted} variant="support">Hidden until you approve a claim.</AppText>
-              ) : claimAccepted ? (
-                <AppText color={colors.muted} variant="support">Claim approved</AppText>
-              ) : myClaim?.status === 'pending' ? (
-                <AppText color={colors.muted} variant="support">Waiting for approval</AppText>
-              ) : myClaim?.status === 'declined' ? (
-                <AppText color={colors.muted} variant="support">Add a clearer private detail.</AppText>
-              ) : (
-                <AppText color={colors.muted} variant="support">Unlocks after claim approval.</AppText>
-              )}
+                {isAdmin ? (
+                  <AppText color={colors.muted} variant="support">Audited access</AppText>
+                ) : ownsReport ? (
+                  <AppText color={colors.muted} variant="support">Hidden until you approve a claim.</AppText>
+                ) : claimAccepted ? (
+                  <AppText color={colors.muted} variant="support">Claim approved</AppText>
+                ) : myClaim?.status === 'pending' ? (
+                  <AppText color={colors.muted} variant="support">Waiting for approval</AppText>
+                ) : myClaim?.status === 'declined' ? (
+                  <AppText color={colors.muted} variant="support">Add a clearer private detail.</AppText>
+                ) : (
+                  <AppText color={colors.muted} variant="support">Unlocks after claim approval.</AppText>
+                )}
 
-              {contact ? (
-                <PrimaryButton fullWidth icon={Phone} onPress={() => void Linking.openURL(`tel:${contact}`)}>Call contact</PrimaryButton>
-              ) : isAdmin ? (
-                <SecondaryButton fullWidth icon={ShieldCheck} onPress={() => router.replace('/admin')}>Open admin workspace</SecondaryButton>
-              ) : ownsReport ? null : claimAccepted || revealedContactIds.includes(item.id) ? (
-                <PrimaryButton fullWidth icon={Eye} onPress={() => void showContact()}>Reveal number</PrimaryButton>
-              ) : myClaim?.status === 'pending' ? (
-                <SecondaryButton disabled fullWidth icon={Clock3}>Awaiting review</SecondaryButton>
-              ) : (
-                <PrimaryButton fullWidth icon={ShieldCheck} onPress={() => setShowClaim(true)}>{claimLabel}</PrimaryButton>
-              )}
-            </Surface>
+                {contact ? (
+                  <PrimaryButton fullWidth icon={Phone} onPress={() => void Linking.openURL(`tel:${contact}`)}>Call contact</PrimaryButton>
+                ) : isAdmin ? (
+                  <SecondaryButton fullWidth icon={ShieldCheck} onPress={() => router.replace('/admin')}>Open admin workspace</SecondaryButton>
+                ) : ownsReport ? null : claimAccepted || revealedContactIds.includes(item.id) ? (
+                  <PrimaryButton fullWidth icon={Eye} onPress={() => void showContact()}>Reveal number</PrimaryButton>
+                ) : myClaim?.status === 'pending' ? (
+                  <SecondaryButton disabled fullWidth icon={Clock3}>Awaiting review</SecondaryButton>
+                ) : (
+                  <PrimaryButton fullWidth icon={ShieldCheck} onPress={() => setShowClaim(true)}>{claimLabel}</PrimaryButton>
+                )}
+              </Surface>
+            ) : null}
 
-            {ownsReport && managedClaims.length ? (
+            {!isReturned && ownsReport && managedClaims.length ? (
               <Surface padding="lg" tone="strong" style={styles.claimBox}>
                 <View style={styles.stepHeading}>
                   <AppText variant="h3">Ownership checks</AppText>
@@ -355,7 +373,7 @@ export default function ItemDetailScreen() {
               </Surface>
             ) : null}
 
-            {showClaim ? (
+            {!isReturned && showClaim ? (
               <Surface padding="lg" tone="strong" style={styles.claimBox}>
                 <View style={styles.stepHeading}>
                   <AppText variant="h3">Verify before contact</AppText>
@@ -380,7 +398,9 @@ export default function ItemDetailScreen() {
         </View>
 
         <View style={[styles.safetyFooter, { borderTopColor: colors.lineSoft }]}>
-          <AppText style={{ flex: 1 }} variant="bodyStrong">Meet in a staffed public place.</AppText>
+          <AppText style={{ flex: 1 }} variant="bodyStrong">
+            {isReturned ? 'This report is closed and no longer accepts claims.' : 'Meet in a staffed public place.'}
+          </AppText>
           <SecondaryButton
             disabled={flaggedItemIds.includes(item.id)}
             icon={Flag}

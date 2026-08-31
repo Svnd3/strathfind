@@ -29,6 +29,7 @@ import {
   fetchCampusUser,
   fetchCampusUserIfExists,
   fetchPublicItemFeed,
+  fetchRecentReturnedItems,
   fetchRemoteSnapshot,
   flagRemoteItem,
   issueRemoteHandoffCode,
@@ -36,6 +37,7 @@ import {
   revealRemoteContact,
   reviewRemoteClaim,
   reviewRemoteFlag,
+  updateRemoteProfilePhoto,
   type RemoteFlagReviewStatus,
   type RemoteItemFlag,
   type RemoteNotification,
@@ -153,6 +155,7 @@ export interface AppStateValue {
   finishOAuthSignIn: (input: FinishOAuthInput) => Promise<ActionResult<GoogleAuthOutcome>>;
   completeGoogleOnboarding: (input: GoogleOnboardingInput) => Promise<ActionResult<CampusUser>>;
   signOut: () => Promise<void>;
+  updateProfilePhoto: (imageUri: string | null) => Promise<ActionResult<CampusUser>>;
   createReport: (draft: ReportDraft) => Promise<ActionResult<PublicItem>>;
   claimItem: (itemId: string, proof: string) => Promise<ActionResult<Claim>>;
   reviewClaim: (claimId: string, approve: boolean, note?: string) => Promise<ActionResult<Claim>>;
@@ -270,7 +273,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     const publicClient = supabase;
     if (!publicClient) return null;
 
-    const publicItems = await fetchPublicItemFeed(publicClient, { limit: 100 });
+    const [activeItems, recentlyReturned] = await Promise.all([
+      fetchPublicItemFeed(publicClient, { limit: 100 }),
+      fetchRecentReturnedItems(publicClient, 48).catch(() => []),
+    ]);
+    const publicItems = [...activeItems, ...recentlyReturned];
     const { data, error } = await publicClient.auth.getSession();
     // Do not let an anonymous request that finishes late replace a newly
     // authenticated snapshot.
@@ -468,6 +475,26 @@ export function AppStateProvider({ children }: PropsWithChildren) {
     return () => clearInterval(interval);
   }, [loadPublicState, loadRemoteState, user]);
 
+  useEffect(() => {
+    const remoteClient = supabase;
+    const expectedUserId = user?.id;
+    const avatarPath = user?.avatarPath;
+    if (!remoteClient || !expectedUserId || !avatarPath) return;
+
+    const interval = setInterval(() => {
+      void remoteClient.auth.getSession().then(async ({ data, error }) => {
+        if (error || data.session?.user.id !== expectedUserId) return;
+        const refreshed = await fetchCampusUserIfExists(remoteClient, data.session.user);
+        if (!refreshed || !(await sessionMatchesUser(remoteClient, expectedUserId))) return;
+        setUser((current) => current?.id === expectedUserId ? refreshed : current);
+      }).catch(() => {
+        // Keep the current profile and initials fallback while signing recovers.
+      });
+    }, 12 * 60 * 60 * 1_000);
+
+    return () => clearInterval(interval);
+  }, [user?.avatarPath, user?.id]);
+
   const signIn = useCallback(
     async ({ email, password, portal }: SignInInput): Promise<ActionResult<CampusUser>> => {
       if (!supabase) {
@@ -611,6 +638,33 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       }
     },
     [discardRemoteSession, loadRemoteState, showToast],
+  );
+
+  const updateProfilePhoto = useCallback(
+    async (imageUri: string | null): Promise<ActionResult<CampusUser>> => {
+      if (!user || !supabase) {
+        const error = 'Sign in to update your profile photo.';
+        showToast(error, 'warning');
+        return { ok: false, error };
+      }
+
+      try {
+        const avatar = await updateRemoteProfilePhoto(supabase, user, imageUri);
+        if (!(await sessionMatchesUser(supabase, user.id))) {
+          throw new Error('Your session changed before the profile update completed.');
+        }
+        const updatedUser = { ...user, ...avatar };
+        setUser((current) => current?.id === user.id ? updatedUser : current);
+        await haptics.confirm();
+        showToast(imageUri ? 'Profile photo updated.' : 'Profile photo removed.', 'success');
+        return { ok: true, data: updatedUser };
+      } catch (cause) {
+        const error = actionError(cause, 'Your profile photo could not be updated.');
+        showToast(error, 'error');
+        return { ok: false, error };
+      }
+    },
+    [showToast, user],
   );
 
   const finishOAuthSignIn = useCallback(
@@ -796,7 +850,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
   const signOut = useCallback(async () => {
     setLoading(true);
     try {
-      if (supabase) await supabase.auth.signOut();
+      if (supabase) await supabase.auth.signOut({ scope: 'local' });
     } catch {
       // Clear local access even when the remote session cannot be reached.
     } finally {
@@ -1284,7 +1338,11 @@ export function AppStateProvider({ children }: PropsWithChildren) {
           return { ok: false, error };
         }
       }
-      const updated = { ...item, status };
+      const updated = {
+        ...item,
+        status,
+        returnedAt: status === 'returned' ? new Date().toISOString() : item.returnedAt,
+      };
       setRawItems((current) =>
         current.map((candidate) => (candidate.id === itemId ? updated : candidate)),
       );
@@ -1485,6 +1543,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       finishOAuthSignIn,
       completeGoogleOnboarding,
       signOut,
+      updateProfilePhoto,
       createReport,
       claimItem,
       reviewClaim,
@@ -1528,6 +1587,7 @@ export function AppStateProvider({ children }: PropsWithChildren) {
       signUp,
       toast,
       updateItemStatus,
+      updateProfilePhoto,
       user,
     ],
   );

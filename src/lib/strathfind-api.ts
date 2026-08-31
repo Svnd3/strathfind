@@ -1,6 +1,6 @@
 import type { SupabaseClient, User as SupabaseUser } from '@supabase/supabase-js';
 
-import { trustedProfileRole } from '@/lib/auth-access';
+import { trustedProfileRole } from './auth-access';
 import type {
   CampusUser,
   Claim,
@@ -8,9 +8,10 @@ import type {
   ItemStatus,
   LostFoundItem,
   ReportDraft,
-} from '@/lib/types';
+} from './types';
 
 const PHOTO_BUCKET = 'found-item-photos';
+const AVATAR_BUCKET = 'profile-avatars';
 
 const categories = new Set<ItemCategory>([
   'electronics',
@@ -152,6 +153,22 @@ function ensureNoError(error: { message?: string } | null, fallback: string) {
   if (error) throw new Error(error.message || fallback);
 }
 
+async function setProfileAvatarPath(
+  client: SupabaseClient,
+  userId: string,
+  avatarPath: string | null,
+  fallback: string,
+) {
+  const result = await client
+    .from('profiles')
+    .update({ avatar_path: avatarPath })
+    .eq('id', userId)
+    .select('avatar_path')
+    .single();
+  ensureNoError(result.error, fallback);
+  if (!result.data || result.data.avatar_path !== avatarPath) throw new Error(fallback);
+}
+
 export async function fetchCampusUserIfExists(
   client: SupabaseClient,
   authUser: SupabaseUser,
@@ -162,9 +179,13 @@ export async function fetchCampusUserIfExists(
   if (!profile) return null;
 
   const universityId = textValue(profile.university_id);
-  const [universityResult, contactResult] = await Promise.all([
+  const avatarPath = optionalText(profile.avatar_path);
+  const [universityResult, contactResult, avatarResult] = await Promise.all([
     client.from('universities').select('name').eq('id', universityId).maybeSingle(),
     client.from('profile_contacts').select('phone_e164').eq('profile_id', authUser.id).maybeSingle(),
+    avatarPath
+      ? client.storage.from(AVATAR_BUCKET).createSignedUrl(avatarPath, 24 * 60 * 60)
+      : Promise.resolve({ data: null, error: null }),
   ]);
   ensureNoError(universityResult.error, 'Your university could not be loaded.');
   ensureNoError(contactResult.error, 'Your contact profile could not be loaded.');
@@ -179,6 +200,8 @@ export async function fetchCampusUserIfExists(
     university: textValue(universityResult.data?.name, 'University'),
     universityId,
     campusId: textValue(profile.student_number),
+    avatarPath,
+    avatarUrl: optionalText(avatarResult.data?.signedUrl),
   };
 }
 
@@ -219,16 +242,34 @@ export async function completeRemoteGoogleStudentOnboarding(
   return textValue(result.data);
 }
 
-async function signedPhotoUrls(client: SupabaseClient, rows: UnknownRow[]) {
-  const paths = [...new Set(rows.map((row) => textValue(row.cover_photo_path)).filter(Boolean))];
+export async function signedPhotoUrls(
+  client: SupabaseClient,
+  rows: UnknownRow[],
+) {
+  const regularPaths = new Set<string>();
   const urls = new Map<string, string>();
-  if (!paths.length) return urls;
 
-  const result = await client.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 60 * 60);
-  if (result.error) return urls;
-  result.data.forEach((entry) => {
-    if (entry.path && entry.signedUrl) urls.set(entry.path, entry.signedUrl);
+  rows.forEach((row) => {
+    const path = textValue(row.cover_photo_path);
+    if (!path) return;
+    // Returned photos are never signed for another user. This keeps the
+    // privacy boundary server-owned instead of relying on the device clock.
+    if (row.status !== 'returned' || row.is_mine === true) {
+      regularPaths.add(path);
+    }
   });
+
+  if (regularPaths.size) {
+    const result = await client.storage
+      .from(PHOTO_BUCKET)
+      .createSignedUrls([...regularPaths], 60 * 60);
+    if (!result.error) {
+      result.data.forEach((entry) => {
+        if (entry.path && entry.signedUrl) urls.set(entry.path, entry.signedUrl);
+      });
+    }
+  }
+
   return urls;
 }
 
@@ -271,6 +312,7 @@ function remoteItem(
     privateClue: questions.get(id),
     handoffPoint: optionalText(row.handoff_point),
     createdAt: textValue(row.created_at, new Date().toISOString()),
+    returnedAt: optionalText(row.returned_at),
   };
 }
 
@@ -291,6 +333,7 @@ function publicRemoteItem(row: UnknownRow): RemoteItem {
     maskedPhone: 'Sign in to continue',
     handoffPoint: optionalText(row.handoff_point),
     createdAt: textValue(row.created_at, new Date().toISOString()),
+    returnedAt: optionalText(row.returned_at),
   };
 }
 
@@ -311,6 +354,26 @@ export async function fetchPublicItemFeed(
     p_limit: limit,
   });
   ensureNoError(result.error, 'Public campus reports could not be loaded.');
+
+  return ((result.data ?? []) as UnknownRow[])
+    .filter((row) => Boolean(textValue(row.id)))
+    .map(publicRemoteItem);
+}
+
+/**
+ * Loads the privacy-safe 72-hour reunion showcase. The database owns both the
+ * campus boundary and the exact time window; the client never infers it from a
+ * report creation date.
+ */
+export async function fetchRecentReturnedItems(
+  client: SupabaseClient,
+  limit = 48,
+): Promise<RemoteItem[]> {
+  const boundedLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  const result = await client.rpc('get_recent_returned_item_cards', {
+    p_limit: boundedLimit,
+  });
+  ensureNoError(result.error, 'Recently reunited items could not be loaded.');
 
   return ((result.data ?? []) as UnknownRow[])
     .filter((row) => Boolean(textValue(row.id)))
@@ -496,6 +559,8 @@ export async function fetchRemoteSnapshot(
 
 function imageMimeType(uri: string, header: string | null) {
   const normalizedHeader = header?.split(';')[0]?.toLowerCase();
+  if (normalizedHeader === 'image/jpg') return 'image/jpeg';
+  if (normalizedHeader === 'image/heif') return 'image/heic';
   if (normalizedHeader && ['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(normalizedHeader)) {
     return normalizedHeader;
   }
@@ -503,6 +568,9 @@ function imageMimeType(uri: string, header: string | null) {
   if (cleanUri.endsWith('.png')) return 'image/png';
   if (cleanUri.endsWith('.webp')) return 'image/webp';
   if (cleanUri.endsWith('.heic') || cleanUri.endsWith('.heif')) return 'image/heic';
+  if (normalizedHeader?.startsWith('image/')) {
+    throw new Error('Choose a JPEG, PNG, WebP or HEIC photo.');
+  }
   return 'image/jpeg';
 }
 
@@ -511,6 +579,90 @@ function imageExtension(mimeType: string) {
   if (mimeType === 'image/webp') return 'webp';
   if (mimeType === 'image/heic') return 'heic';
   return 'jpg';
+}
+
+export async function updateRemoteProfilePhoto(
+  client: SupabaseClient,
+  user: CampusUser,
+  uri: string | null,
+): Promise<Pick<CampusUser, 'avatarPath' | 'avatarUrl'>> {
+  const previousPath = user.avatarPath;
+
+  if (!uri) {
+    await setProfileAvatarPath(client, user.id, null, 'Your profile photo could not be removed.');
+    if (previousPath) {
+      const removal = await client.storage.from(AVATAR_BUCKET).remove([previousPath]);
+      if (removal.error) {
+        await setProfileAvatarPath(
+          client,
+          user.id,
+          previousPath,
+          'The photo could not be removed and your profile could not be restored.',
+        );
+        ensureNoError(removal.error, 'Your profile photo could not be removed.');
+      }
+    }
+    return { avatarPath: undefined, avatarUrl: undefined };
+  }
+
+  const response = await fetch(uri);
+  if (!response.ok) throw new Error('The selected photo could not be read.');
+  const mimeType = imageMimeType(uri, response.headers.get('content-type'));
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}.${imageExtension(mimeType)}`;
+  const path = `${user.id}/${filename}`;
+  const upload = await client.storage.from(AVATAR_BUCKET).upload(path, await response.arrayBuffer(), {
+    cacheControl: '3600',
+    contentType: mimeType,
+    upsert: false,
+  });
+  ensureNoError(upload.error, 'Your profile photo could not be uploaded.');
+
+  const signed = await client.storage.from(AVATAR_BUCKET).createSignedUrl(path, 24 * 60 * 60);
+  const avatarUrl = optionalText(signed.data?.signedUrl);
+  if (signed.error || !avatarUrl) {
+    const cleanup = await client.storage.from(AVATAR_BUCKET).remove([path]);
+    ensureNoError(cleanup.error, 'The unreadable profile photo upload could not be cleaned up.');
+    throw new Error(signed.error?.message || 'Your profile photo could not be opened securely.');
+  }
+
+  try {
+    await setProfileAvatarPath(client, user.id, path, 'Your profile photo could not be saved.');
+  } catch (cause) {
+    const cleanup = await client.storage.from(AVATAR_BUCKET).remove([path]);
+    ensureNoError(cleanup.error, 'The unsaved profile photo upload could not be cleaned up.');
+    throw cause;
+  }
+
+  if (previousPath && previousPath !== path) {
+    const removal = await client.storage.from(AVATAR_BUCKET).remove([previousPath]);
+    if (removal.error) {
+      try {
+        await setProfileAvatarPath(
+          client,
+          user.id,
+          previousPath,
+          'The previous photo could not be removed and your profile could not be restored.',
+        );
+      } catch {
+        // The database still points at the valid new object. Do not delete it.
+        throw new Error(
+          removal.error.message
+          || 'The previous photo could not be removed. Your new photo remains active.',
+        );
+      }
+      const cleanup = await client.storage.from(AVATAR_BUCKET).remove([path]);
+      ensureNoError(
+        cleanup.error,
+        'The previous photo could not be removed and the unused replacement could not be cleaned up.',
+      );
+      ensureNoError(removal.error, 'Your previous profile photo could not be removed.');
+    }
+  }
+
+  return {
+    avatarPath: path,
+    avatarUrl,
+  };
 }
 
 async function uploadReportPhoto(

@@ -46,6 +46,7 @@ function ThemedApp() {
         <Stack.Screen name="auth-callback" />
         <Stack.Screen name="auth-onboarding" />
         <Stack.Screen name="report-found" />
+        <Stack.Screen name="settings" />
         <Stack.Screen name="legal" />
         <Stack.Screen name="(student)" />
         <Stack.Screen name="item/[id]" />

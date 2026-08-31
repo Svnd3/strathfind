@@ -12,7 +12,7 @@ const statusContent: Record<ItemStatus, { label: string; tone: StatusTone }> = {
   published: { label: 'Open', tone: 'info' },
   claim_pending: { label: 'Claim pending', tone: 'warning' },
   pickup_agreed: { label: 'Pickup agreed', tone: 'info' },
-  handoff_due: { label: 'Handoff due', tone: 'danger' },
+  handoff_due: { label: 'Take to desk', tone: 'danger' },
   at_office: { label: 'At lost & found', tone: 'neutral' },
   returned: { label: 'Returned', tone: 'success' },
 };

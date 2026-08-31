@@ -105,7 +105,7 @@ export default function HomeScreen() {
               </View>
               <IconButton accessibilityLabel="Close help" icon={X} onPress={() => setHelpOpen(false)} />
             </View>
-            <HelpRow index="1" text="LOST? opens missing-item reports." />
+            <HelpRow index="1" text="LOST? opens all active lost and found reports." />
             <HelpRow index="2" text="FOUND? starts a secure found-item report." />
             <HelpRow index="3" text="Tap a card to preview it. Sign in for full details." />
           </View>
@@ -141,7 +141,7 @@ function HomeAction({
 
   return (
     <Pressable
-      accessibilityLabel={tone === 'lost' ? 'Browse lost items' : 'Report a found item'}
+      accessibilityLabel={tone === 'lost' ? 'Browse lost and found reports' : 'Report a found item'}
       accessibilityRole="button"
       onBlur={onBlur}
       onFocus={onFocus}

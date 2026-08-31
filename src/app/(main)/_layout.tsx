@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { CircleUserRound, House, PackageCheck, Search } from 'lucide-react-native';
+import { CircleUserRound, HeartHandshake, House, Search } from 'lucide-react-native';
 import { Platform, useWindowDimensions } from 'react-native';
 
 import { radius, raisedShadow, spacing } from '@/constants/design';
@@ -9,7 +9,7 @@ import { useAppTheme } from '@/theme/app-theme';
 const icons = {
   index: House,
   lost: Search,
-  found: PackageCheck,
+  found: HeartHandshake,
   account: CircleUserRound,
 };
 
@@ -38,7 +38,7 @@ export default function MainLayout() {
           tabBarInactiveTintColor: colors.muted,
           tabBarLabelPosition: desktop ? 'beside-icon' : 'below-icon',
           tabBarLabelStyle: {
-            fontSize: 14,
+            fontSize: desktop ? 14 : 12,
             fontWeight: '700',
             letterSpacing: desktop ? 0 : -0.1,
           },
@@ -72,10 +72,10 @@ export default function MainLayout() {
                 borderRadius: radius.md,
               }
             : { borderRadius: radius.md },
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color }) => (
             <Icon
               color={color}
-              fill={focused && route.name === 'found' ? color : 'none'}
+              fill="none"
               size={22}
               strokeWidth={2.2}
             />
@@ -84,8 +84,8 @@ export default function MainLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
-      <Tabs.Screen name="lost" options={{ title: 'Lost' }} />
-      <Tabs.Screen name="found" options={{ title: 'Found' }} />
+      <Tabs.Screen name="lost" options={{ title: 'Lost & Found' }} />
+      <Tabs.Screen name="found" options={{ title: 'Reunited' }} />
       <Tabs.Screen name="account" options={{ title: 'Account' }} />
     </Tabs>
   );

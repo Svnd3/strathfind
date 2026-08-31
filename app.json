@@ -44,7 +44,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow StrathFind to choose a photo for a lost or found item report.",
+          "photosPermission": "Allow StrathFind to choose photos for your profile and lost or found item reports.",
           "microphonePermission": false
         }
       ]

@@ -216,7 +216,7 @@ function Overview({
       <SectionHeading title="Overview" level={1} />
       <View style={styles.metrics}>
         <Metric icon={Archive} label="Open reports" value={metrics.open} />
-        <Metric icon={Clock3} label="Handoff due" value={metrics.due} urgent={metrics.due > 0} />
+        <Metric icon={Clock3} label="Desk drop-offs" value={metrics.due} urgent={metrics.due > 0} />
         <Metric icon={ClipboardCheck} label="Pending claims" value={metrics.claims} />
         <Metric icon={Boxes} label="At office" value={metrics.office} />
         <Metric icon={Flag} label="Open flags" value={metrics.flags} urgent={metrics.flags > 0} />

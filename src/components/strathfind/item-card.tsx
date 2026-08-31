@@ -1,5 +1,8 @@
-import { useState, type ComponentType } from 'react';
+import { useEffect, useState, type ComponentType } from 'react';
 import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
   Image,
   Modal,
   Platform,
@@ -14,6 +17,7 @@ import {
 } from 'react-native';
 import {
   ArrowUpRight,
+  BellRing,
   Backpack,
   BookOpen,
   CircleHelp,
@@ -30,7 +34,7 @@ import {
 } from 'lucide-react-native';
 
 import { radius, raisedShadow, spacing } from '@/constants/design';
-import { handoffLabel, isHandoffUrgent } from '@/lib/item-utils';
+import { isHandoffUrgent } from '@/lib/item-utils';
 import type { ItemCategory, LostFoundItem } from '@/lib/types';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -101,6 +105,61 @@ function fallbackToneFor(item: PublicItemCardItem) {
   }
 
   return fallbackTones[Math.abs(hash) % fallbackTones.length];
+}
+
+function useUrgencyPulse(enabled: boolean) {
+  const [opacity] = useState(() => new Animated.Value(enabled ? 0.45 : 0));
+
+  useEffect(() => {
+    let mounted = true;
+    let animation: Animated.CompositeAnimation | null = null;
+
+    const updateMotion = (reduceMotion: boolean) => {
+      if (!mounted) return;
+      animation?.stop();
+      if (!enabled) {
+        opacity.setValue(0);
+        return;
+      }
+      if (reduceMotion) {
+        opacity.setValue(0.7);
+        return;
+      }
+
+      opacity.setValue(0.3);
+      animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(opacity, {
+            duration: 550,
+            easing: Easing.inOut(Easing.ease),
+            toValue: 1,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            duration: 550,
+            easing: Easing.inOut(Easing.ease),
+            toValue: 0.3,
+            useNativeDriver: true,
+          }),
+        ]),
+        { iterations: 3 },
+      );
+      animation.start(({ finished }) => {
+        if (mounted && finished) opacity.setValue(0.7);
+      });
+    };
+
+    void AccessibilityInfo.isReduceMotionEnabled().then(updateMotion).catch(() => updateMotion(false));
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', updateMotion);
+
+    return () => {
+      mounted = false;
+      animation?.stop();
+      subscription?.remove();
+    };
+  }, [enabled, opacity]);
+
+  return opacity;
 }
 
 function ItemFallbackArt({
@@ -174,6 +233,7 @@ export function ItemCard({
   // The shared time helpers only inspect kind/status/deadline fields.
   const itemForTime = item as LostFoundItem;
   const urgent = isHandoffUrgent(itemForTime, now);
+  const urgencyOpacity = useUrgencyPulse(urgent);
 
   const setExpanded = (nextExpanded: boolean) => {
     if (controlledExpanded === undefined) setInternalExpanded(nextExpanded);
@@ -229,13 +289,27 @@ export function ItemCard({
               kind={item.kind}
               style={useNarrowMedia ? styles.statusPillNarrow : undefined}
             />
-            {item.status !== 'published' ? (
+            {item.status !== 'published' && item.status !== 'handoff_due' ? (
               <StatusPill
                 status={item.status}
                 style={useNarrowMedia ? styles.statusPillNarrow : undefined}
               />
             ) : null}
           </View>
+          {urgent ? (
+            <View
+              accessibilityElementsHidden
+              aria-hidden
+              pointerEvents="none"
+              style={[
+                styles.urgentMark,
+                useNarrowMedia ? styles.urgentMarkNarrow : styles.urgentMarkDefault,
+                { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
+              ]}
+            >
+              <BellRing color={colors.danger} size={16} strokeWidth={2.4} />
+            </View>
+          ) : null}
           {useNarrowMedia ? (
             <View
               aria-hidden
@@ -272,7 +346,8 @@ export function ItemCard({
           {...pressableProps}
           accessibilityHint={accessibilityHint ?? 'Shows item details in a dialog'}
           accessibilityLabel={
-            accessibilityLabel ?? `Open details for ${item.kind} item: ${item.title}`
+            accessibilityLabel
+              ?? `${urgent ? 'Urgent: take this item to the lost and found desk. ' : ''}Open details for ${item.kind} item: ${item.title}`
           }
           accessibilityRole="button"
           accessibilityState={{ ...accessibilityState, disabled: Boolean(disabled), expanded }}
@@ -328,6 +403,17 @@ export function ItemCard({
             </View>
           </View>
         </Pressable>
+        {urgent ? (
+          <Animated.View
+            accessibilityElementsHidden
+            aria-hidden
+            pointerEvents="none"
+            style={[
+              styles.urgentOutline,
+              { borderColor: colors.danger, opacity: urgencyOpacity },
+            ]}
+          />
+        ) : null}
       </View>
 
       <Modal
@@ -407,9 +493,12 @@ export function ItemCard({
                       </AppText>
                     </View>
                     {urgent ? (
-                      <AppText color={colors.danger} variant="micro">
-                        {handoffLabel(itemForTime, now).toUpperCase()}
-                      </AppText>
+                      <View style={styles.urgentMessage}>
+                        <BellRing aria-hidden color={colors.danger} size={18} strokeWidth={2.4} />
+                        <AppText color={colors.danger} style={styles.detailText} variant="support">
+                          Please take this item to the lost and found desk now.
+                        </AppText>
+                      </View>
                     ) : null}
                   </View>
                 </View>
@@ -451,12 +540,23 @@ export function ItemCard({
 
 const styles = StyleSheet.create({
   card: {
+    position: 'relative',
     alignSelf: 'flex-start',
     minHeight: 48,
     overflow: 'hidden',
     padding: spacing.xs,
     borderRadius: radius.xl,
     borderWidth: 1,
+  },
+  urgentOutline: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    bottom: 2,
+    left: 2,
+    zIndex: 2,
+    borderRadius: radius.xl,
+    borderWidth: 2,
   },
   cardCompact: {
     minHeight: 312,
@@ -537,6 +637,23 @@ const styles = StyleSheet.create({
     right: spacing.xs,
     flexDirection: 'column',
     gap: spacing.xxs,
+  },
+  urgentMark: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  urgentMarkDefault: {
+    top: spacing.xs,
+    right: spacing.xs,
+  },
+  urgentMarkNarrow: {
+    bottom: spacing.xs,
+    left: spacing.xs,
   },
   statusPillNarrow: {
     maxWidth: '100%',
@@ -634,6 +751,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   detailRow: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+  },
+  urgentMessage: {
     minHeight: 24,
     flexDirection: 'row',
     alignItems: 'flex-start',

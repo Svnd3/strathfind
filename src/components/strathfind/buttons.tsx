@@ -21,6 +21,7 @@ type IconComponent = ComponentType<LucideProps>;
 
 export interface ButtonProps extends Omit<PressableProps, 'style' | 'children'> {
   loading?: boolean;
+  danger?: boolean;
   icon?: IconComponent;
   iconPosition?: 'left' | 'right';
   fullWidth?: boolean;
@@ -31,6 +32,7 @@ export interface ButtonProps extends Omit<PressableProps, 'style' | 'children'> 
 function Button({
   tone,
   loading = false,
+  danger = false,
   disabled = false,
   icon: Icon,
   iconPosition = 'left',
@@ -45,7 +47,7 @@ function Button({
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const inactive = disabled || loading;
-  const foreground = tone === 'primary' ? colors.onPrimary : colors.wine;
+  const foreground = tone === 'primary' ? colors.onPrimary : danger ? colors.danger : colors.wine;
 
   return (
     <Pressable
@@ -70,7 +72,7 @@ function Button({
           paddingVertical: spacing.sm,
           borderRadius: radius.md,
           borderWidth: tone === 'text' ? 0 : 1,
-          borderColor: tone === 'secondary' ? colors.wine : 'transparent',
+          borderColor: tone === 'secondary' ? (danger ? colors.danger : colors.wine) : 'transparent',
           backgroundColor:
             tone === 'primary'
               ? pressed
@@ -80,10 +82,10 @@ function Button({
                   : colors.primary
               : tone === 'secondary'
                 ? pressed || hovered
-                  ? colors.wineSoft
+                  ? danger ? colors.dangerSoft : colors.wineSoft
                   : colors.surfaceStrong
                 : pressed || hovered
-                  ? colors.wineSoft
+                  ? danger ? colors.dangerSoft : colors.wineSoft
                   : 'transparent',
           alignItems: 'center',
           justifyContent: 'center',
@@ -95,7 +97,7 @@ function Button({
           ...hoverShadow(hovered && !inactive, colors.black),
           ...(Platform.OS === 'web' ? ({ cursor: inactive ? 'not-allowed' : 'pointer' } as ViewStyle) : {}),
         },
-        focusRing(focused, tone === 'primary' ? colors.yellow : colors.wine),
+        focusRing(focused, tone === 'primary' ? colors.yellow : danger ? colors.danger : colors.wine),
         style,
       ]}
     >

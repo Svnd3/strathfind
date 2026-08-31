@@ -1200,4 +1200,460 @@ select pg_temp.assert_true(
 
 reset role;
 
+select pg_temp.assert_true(
+  (
+    select not bucket.public
+      and bucket.file_size_limit = 5242880
+      and bucket.allowed_mime_types @> array['image/jpeg', 'image/png', 'image/webp']::text[]
+    from storage.buckets bucket
+    where bucket.id = 'profile-avatars'
+  ),
+  'profile avatars use a private, image-only, size-limited bucket'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 4
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname in (
+        'Users can read their own profile avatar',
+        'Users can upload their own profile avatar',
+        'Users can update their own profile avatar',
+        'Users can delete their own profile avatar'
+      )
+  ),
+  'profile avatars have self-owned select, insert, update, and delete policies'
+);
+
+set local role authenticated;
+
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-4000-8000-000000000003',
+  false
+);
+
+select pg_temp.assert_true(
+  public.can_manage_profile_avatar_path(
+    '10000000-0000-4000-8000-000000000003/avatar-main.webp'
+  )
+  and not public.can_manage_profile_avatar_path(
+    '10000000-0000-4000-8000-000000000002/avatar-main.webp'
+  )
+  and not public.can_manage_profile_avatar_path(
+    '10000000-0000-4000-8000-000000000003/nested/avatar-main.webp'
+  ),
+  'avatar storage keys are exact self-owned two-segment paths'
+);
+
+update public.profiles
+set avatar_path = '10000000-0000-4000-8000-000000000003/avatar-main.webp'
+where id = '10000000-0000-4000-8000-000000000003';
+
+select pg_temp.assert_true(
+  (
+    select avatar_path = '10000000-0000-4000-8000-000000000003/avatar-main.webp'
+    from public.get_my_profile()
+  ),
+  'an account holder can save a validated self-owned avatar path'
+);
+
+do $$
+begin
+  begin
+    update public.profiles
+    set avatar_path = '10000000-0000-4000-8000-000000000002/not-mine.webp'
+    where id = '10000000-0000-4000-8000-000000000003';
+    raise exception 'cross-owner profile avatar path unexpectedly succeeded';
+  exception
+    when invalid_parameter_value then null;
+  end;
+end;
+$$;
+
+select public.complete_item_return(
+  (select value::uuid from strathfind_test_state where key = 'claim')
+);
+
+select pg_temp.assert_true(
+  (
+    select status = 'returned'
+      and returned_at is not null
+      and returned_at = (
+        select min(history.changed_at)
+        from public.item_status_history history
+        where history.item_id = item.id
+          and history.new_status = 'returned'
+      )
+    from public.found_item_cards item
+    where item.id = (
+      select value::uuid from strathfind_test_state where key = 'found_item'
+    )
+  )
+  and exists (
+    select 1
+    from public.found_items
+    where id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  ),
+  'a recent returned report remains visible through the safe view and legacy table read'
+);
+
+select pg_temp.assert_true(
+  public.can_view_item_photo_path(
+    '00000000-0000-4000-8000-000000000101/items/'
+      || (select value from strathfind_test_state where key = 'found_item')
+      || '/wallet-cover.jpg'
+  ),
+  'same-campus users retain photo access during the 72-hour reunion window'
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.get_public_item_cards(null, null, null, 100)
+    where id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  ),
+  'the active public feed continues to exclude returned reports'
+);
+
+reset role;
+
+do $$
+declare
+  v_before timestamptz;
+  v_after timestamptz;
+begin
+  select returned_at into v_before
+  from public.found_items
+  where id = (select value::uuid from strathfind_test_state where key = 'found_item');
+
+  update public.found_items
+  set returned_at = returned_at - interval '1 day'
+  where id = (select value::uuid from strathfind_test_state where key = 'found_item');
+
+  select returned_at into v_after
+  from public.found_items
+  where id = (select value::uuid from strathfind_test_state where key = 'found_item');
+
+  if v_after is distinct from v_before then
+    raise exception 'returned_at was mutable after the first return';
+  end if;
+end;
+$$;
+
+select pg_temp.assert_true(
+  public.process_returned_item_retention(
+    array[(select value::uuid from strathfind_test_state where key = 'found_item')],
+    now() + interval '30 days' - interval '1 second'
+  ) = 0
+  and exists (
+    select 1
+    from public.found_items
+    where id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  ),
+  'retention keeps a returned report until it is fully 30 days old'
+);
+
+set local role anon;
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 1
+      and bool_and(returned_at > now() - interval '72 hours')
+    from public.get_recent_returned_item_cards(100)
+  ),
+  'anonymous clients can read only recently returned Strathmore reports'
+);
+
+select pg_temp.assert_true(
+  (
+    select bool_and(
+      to_jsonb(card) ? 'returned_at'
+      and not (
+        to_jsonb(card) ?| array[
+          'reporter_id',
+          'university_id',
+          'phone_e164',
+          'ownership_question',
+          'cover_photo_path'
+        ]
+      )
+    )
+    from public.get_recent_returned_item_cards(100) card
+  ),
+  'the recent-return feed exposes its timestamp without identity or contact fields'
+);
+
+reset role;
+
+-- Create an exact 72-hour boundary record as a trusted historical import.
+-- The normal report RPC never accepts status or returned_at from a client.
+alter table public.found_items disable trigger found_items_set_defaults;
+
+insert into public.found_items (
+  id,
+  university_id,
+  reporter_id,
+  title,
+  description,
+  category,
+  color,
+  location_found,
+  found_at,
+  handoff_due_at,
+  status,
+  kind,
+  handoff_point,
+  returned_at
+) values (
+  '30000000-0000-4000-8000-000000000072',
+  '00000000-0000-4000-8000-000000000101',
+  '10000000-0000-4000-8000-000000000001',
+  'Returned boundary fixture',
+  'Privacy boundary regression record.',
+  'wallet',
+  'black',
+  'Library west wing',
+  now() - interval '4 days',
+  now() - interval '3 days',
+  'returned',
+  'found',
+  'Student Centre',
+  now() - interval '72 hours'
+);
+
+alter table public.found_items enable trigger found_items_set_defaults;
+
+set local role authenticated;
+
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-4000-8000-000000000003',
+  false
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.found_item_cards
+    where id = '30000000-0000-4000-8000-000000000072'
+  )
+  and not exists (
+    select 1
+    from public.get_recent_returned_item_cards(100)
+    where id = '30000000-0000-4000-8000-000000000072'
+  )
+  and not exists (
+    select 1
+    from public.found_items
+    where id = '30000000-0000-4000-8000-000000000072'
+  )
+  and not public.can_view_item_photo_path(
+    '00000000-0000-4000-8000-000000000101/items/'
+      || '30000000-0000-4000-8000-000000000072'
+      || '/boundary-cover.jpg'
+  ),
+  'returned reports and their photos are hidden at the exact 72-hour boundary'
+);
+
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-4000-8000-000000000001',
+  false
+);
+
+select pg_temp.assert_true(
+  exists (
+    select 1
+    from public.found_item_cards
+    where id = '30000000-0000-4000-8000-000000000072'
+      and is_mine
+  )
+  and exists (
+    select 1
+    from public.found_items
+    where id = '30000000-0000-4000-8000-000000000072'
+  )
+  and public.can_view_item_photo_path(
+    '00000000-0000-4000-8000-000000000101/items/'
+      || '30000000-0000-4000-8000-000000000072'
+      || '/boundary-cover.jpg'
+  ),
+  'a reporter keeps returned report and photo access until the 30-day purge'
+);
+
+reset role;
+
+select pg_temp.assert_true(
+  has_function_privilege(
+    'anon',
+    'public.get_recent_returned_item_cards(integer)',
+    'execute'
+  )
+  and has_function_privilege(
+    'authenticated',
+    'public.get_recent_returned_item_cards(integer)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'anon',
+    'public.process_returned_item_retention(uuid[],timestamptz)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'public.process_returned_item_retention(uuid[],timestamptz)',
+    'execute'
+  )
+  and has_function_privilege(
+    'service_role',
+    'public.process_returned_item_retention(uuid[],timestamptz)',
+    'execute'
+  ),
+  'recent returns are public-safe while destructive retention is service-only'
+);
+
+select pg_temp.assert_true(
+  exists (
+    select 1
+    from public.claims
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  )
+  and exists (
+    select 1
+    from public.contact_reveal_audit
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  )
+  and exists (
+    select 1
+    from public.item_custody
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  )
+  and exists (
+    select 1
+    from public.custody_events
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  ),
+  'the retention fixture covers claims, contact audit, and custody dependencies'
+);
+
+select pg_temp.assert_true(
+  public.process_returned_item_retention(
+    array[(select value::uuid from strathfind_test_state where key = 'found_item')],
+    now() + interval '30 days'
+  ) = 1
+  and exists (
+    select 1
+    from public.found_items
+    where id = '30000000-0000-4000-8000-000000000072'
+  ),
+  'retention deletes only the eligible report explicitly confirmed as Storage-cleaned'
+);
+
+select pg_temp.assert_true(
+  public.process_returned_item_retention(array[]::uuid[], now() + interval '30 days') = 0
+  and not exists (
+    select 1
+    from public.found_items
+    where id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  )
+  and not exists (
+    select 1
+    from public.claims
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  )
+  and not exists (
+    select 1
+    from public.contact_reveal_audit
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  )
+  and not exists (
+    select 1
+    from public.item_custody
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  )
+  and not exists (
+    select 1
+    from public.custody_events
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  )
+  and not exists (
+    select 1
+    from public.item_status_history
+    where item_id = (select value::uuid from strathfind_test_state where key = 'found_item')
+  ),
+  'retention handles an empty batch and deletes selected reports in foreign-key-safe order'
+);
+
+select pg_temp.assert_true(
+  public.process_returned_item_retention(
+    array['30000000-0000-4000-8000-000000000072'::uuid],
+    now() + interval '30 days'
+  ) = 1
+  and not exists (
+    select 1
+    from public.found_items
+    where id = '30000000-0000-4000-8000-000000000072'
+  ),
+  'retention can finish a later Storage-cleaned report in a separate batch'
+);
+
+reset role;
+
+insert into public.found_items (
+  id,
+  university_id,
+  reporter_id,
+  title,
+  description,
+  category,
+  color,
+  location_found,
+  found_at,
+  handoff_due_at,
+  status,
+  kind,
+  handoff_point
+) values (
+  '30000000-0000-4000-8000-000000000099',
+  '00000000-0000-4000-8000-000000000101',
+  '10000000-0000-4000-8000-000000000001',
+  'Archived photo fixture',
+  'Archived reports must never expose their photo paths.',
+  'wallet',
+  'black',
+  'Library west wing',
+  now() - interval '4 days',
+  now() - interval '3 days',
+  'archived',
+  'found',
+  'Student Centre'
+);
+
+set local role authenticated;
+
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-4000-8000-000000000003',
+  false
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.found_items
+    where id = '30000000-0000-4000-8000-000000000099'
+  )
+  and not public.can_view_item_photo_path(
+    '00000000-0000-4000-8000-000000000101/items/'
+      || '30000000-0000-4000-8000-000000000099'
+      || '/archived-cover.jpg'
+  ),
+  'archived reports and their photo paths remain private'
+);
+
+reset role;
+
 rollback;

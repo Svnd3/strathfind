@@ -15,15 +15,19 @@ export function hoursUntil(iso: string, now = new Date()): number {
 type HandoffItem = Pick<LostFoundItem, 'kind' | 'handoffDueAt' | 'status'>;
 
 export function handoffLabel(item: HandoffItem, now = new Date()): string {
+  if (item.status === 'returned') return 'Returned';
   if (item.kind === 'lost' || !item.handoffDueAt) return 'Open report';
   if (item.status === 'at_office') return 'At lost & found';
-  if (item.status === 'returned') return 'Returned';
   const hours = hoursUntil(item.handoffDueAt, now);
-  return hours === 0 ? 'Handoff due now' : `${hours}h to handoff`;
+  return hours === 0 ? 'Take to desk now' : `${hours}h to desk`;
 }
 
 export function isHandoffUrgent(item: HandoffItem, now = new Date()): boolean {
-  return item.kind === 'found' && Boolean(item.handoffDueAt) && hoursUntil(item.handoffDueAt!, now) <= 6;
+  const canStillBeTakenToTheDesk = !['at_office', 'returned'].includes(item.status);
+  return item.kind === 'found'
+    && canStillBeTakenToTheDesk
+    && Boolean(item.handoffDueAt)
+    && hoursUntil(item.handoffDueAt!, now) <= 6;
 }
 
 type FilterableItem = Pick<
@@ -48,4 +52,18 @@ export function filterItems<T extends FilterableItem>(
 
 export function createHandoffDeadline(foundAt: Date): string {
   return new Date(foundAt.getTime() + 24 * 3_600_000).toISOString();
+}
+
+export const REUNION_VISIBILITY_HOURS = 72;
+
+type ReturnedItem = Pick<LostFoundItem, 'returnedAt' | 'status'>;
+
+/** Client-side guard for cached/local data; the database remains authoritative. */
+export function isRecentlyReturned(item: ReturnedItem, now = new Date()): boolean {
+  if (item.status !== 'returned' || !item.returnedAt) return false;
+  const returnedAt = new Date(item.returnedAt).getTime();
+  const elapsed = now.getTime() - returnedAt;
+  return Number.isFinite(returnedAt)
+    && elapsed >= 0
+    && elapsed < REUNION_VISIBILITY_HOURS * 3_600_000;
 }

@@ -121,7 +121,7 @@ export function SectionHeading({
             {eyebrow.toUpperCase()}
           </AppText>
         ) : null}
-        <AppText accessibilityRole="header" variant={variant}>
+        <AppText accessibilityRole="header" aria-level={level} variant={variant}>
           {title}
         </AppText>
         {description ? (
