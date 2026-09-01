@@ -232,9 +232,9 @@ export default function ItemDetailScreen() {
               <Surface padding="md" tone="inset" style={styles.handoffBox}>
                 <CheckCircle2 color={colors.success} size={23} />
                 <View style={{ flex: 1, gap: spacing.xxs }}>
-                  <AppText color={colors.ink} variant="bodyStrong">Reunited with its owner</AppText>
+                  <AppText color={colors.ink} variant="bodyStrong">Returned to its owner</AppText>
                   <AppText color={colors.muted} variant="support">
-                    This report is closed and remains in Reunited for 72 hours.
+                    This report is closed and stays on the Returned page for 72 hours.
                   </AppText>
                 </View>
               </Surface>

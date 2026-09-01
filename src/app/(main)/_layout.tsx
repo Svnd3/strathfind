@@ -85,7 +85,7 @@ export default function MainLayout() {
     >
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="lost" options={{ title: 'Lost & Found' }} />
-      <Tabs.Screen name="found" options={{ title: 'Reunited' }} />
+      <Tabs.Screen name="found" options={{ title: 'Returned' }} />
       <Tabs.Screen name="account" options={{ title: 'Account' }} />
     </Tabs>
   );

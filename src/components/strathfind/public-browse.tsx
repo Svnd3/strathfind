@@ -44,7 +44,7 @@ export function PublicBrowseScreen({ mode = 'active' }: { mode?: BrowseMode }) {
   const [now, setNow] = useState(() => new Date());
   const narrowCards = width < 640;
   const reunited = mode === 'reunited';
-  const title = reunited ? 'Reunited' : 'Lost & Found';
+  const title = reunited ? 'Returned' : 'Lost & Found';
   const filtered = useMemo(
     () => filterItems(items, query, 'all', category).filter((item) => {
       if (reunited) return isRecentlyReturned(item);
@@ -83,7 +83,7 @@ export function PublicBrowseScreen({ mode = 'active' }: { mode?: BrowseMode }) {
   const emptyTitle = hasSearchFilters
     ? 'No matches'
     : reunited
-      ? 'No reunions to show yet'
+      ? 'No returned items yet'
       : reportView === 'desk'
         ? 'Nothing is at the desk right now'
         : 'No active reports yet';
@@ -113,7 +113,7 @@ export function PublicBrowseScreen({ mode = 'active' }: { mode?: BrowseMode }) {
   };
 
   if (loading) {
-    return <RouteLoadingScreen label={`Loading ${reunited ? 'reunions' : 'reports'}`} />;
+    return <RouteLoadingScreen label={`Loading ${reunited ? 'returned items' : 'reports'}`} />;
   }
 
   return (
@@ -137,7 +137,7 @@ export function PublicBrowseScreen({ mode = 'active' }: { mode?: BrowseMode }) {
             <AppText accessibilityRole="header" variant="h1">{title}</AppText>
             <AppText color={colors.muted} variant="support">
               {reunited
-                ? 'Belongings returned to their owners. Each reunion stays visible for 72 hours.'
+                ? 'Items successfully returned to their owners. Each stays visible for 72 hours.'
                 : 'Browse active lost and found reports from around campus.'}
             </AppText>
           </View>

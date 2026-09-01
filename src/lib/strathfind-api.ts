@@ -373,7 +373,7 @@ export async function fetchRecentReturnedItems(
   const result = await client.rpc('get_recent_returned_item_cards', {
     p_limit: boundedLimit,
   });
-  ensureNoError(result.error, 'Recently reunited items could not be loaded.');
+  ensureNoError(result.error, 'Recently returned items could not be loaded.');
 
   return ((result.data ?? []) as UnknownRow[])
     .filter((row) => Boolean(textValue(row.id)))

@@ -6,21 +6,26 @@ import {
   BellRing,
   Camera,
   ChevronRight,
+  ImagePlus,
   LayoutDashboard,
   Plus,
   Settings,
   Trash2,
   UserRound,
+  X,
 } from 'lucide-react-native';
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LucideProps } from 'lucide-react-native';
 
 import {
@@ -37,13 +42,13 @@ import {
   Surface,
   TextButton,
 } from '@/components/strathfind';
-import { focusRing, hoverShadow, radius, spacing } from '@/constants/design';
+import { focusRing, hoverShadow, radius, raisedShadow, spacing } from '@/constants/design';
 import { haptics } from '@/lib/haptics';
 import { useAppState } from '@/state';
 import { useAppTheme } from '@/theme/app-theme';
 
 type ReportFilter = 'all' | 'lost' | 'found';
-type PhotoAction = 'change' | 'remove' | null;
+type PhotoAction = 'camera' | 'library' | 'remove' | null;
 
 const reportFilters = [
   { label: 'All', value: 'all' },
@@ -70,14 +75,16 @@ export default function AccountScreen() {
     loading,
   } = useAppState();
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const { fontScale, width } = useWindowDimensions();
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all');
   const [photoAction, setPhotoAction] = useState<PhotoAction>(null);
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
+  const [avatarFocused, setAvatarFocused] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const accountUser = isAuthenticated ? user : null;
-  const compact = width < 520;
   const stackProfile = width < 300 || fontScale >= 1.3;
   const columns = width < 640 ? 2 : width < 1024 ? 3 : 4;
   const filteredItems = useMemo(
@@ -111,44 +118,76 @@ export default function AccountScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  const chooseProfilePhoto = async () => {
+  const uploadProfilePhoto = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!asset.uri) {
+      setPhotoError('That photo could not be read. Choose another image.');
+      return false;
+    }
+    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+      setPhotoError('Choose an image smaller than 5 MB.');
+      return false;
+    }
+    if (asset.mimeType && !supportedProfilePhotoTypes.has(asset.mimeType.toLowerCase())) {
+      setPhotoError('Choose a JPEG, PNG, WebP or HEIC photo.');
+      return false;
+    }
+
+    const result = await updateProfilePhoto(asset.uri);
+    if (!result.ok) {
+      setPhotoError(result.error);
+      return false;
+    }
+
+    setFailedAvatarUrl(null);
+    return true;
+  };
+
+  const chooseProfilePhoto = async (source: 'camera' | 'library') => {
     if (!accountUser || photoAction) return;
 
-    setPhotoAction('change');
+    setPhotoAction(source);
     setPhotoError('');
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setPhotoError('Photo access is needed to choose a profile picture. You can allow it in device settings.');
-        return;
+      if (Platform.OS !== 'web') {
+        const permission = source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          setPhotoError(
+            source === 'camera'
+              ? 'Camera access is needed to take a profile picture. You can allow it in device settings.'
+              : 'Photo access is needed to choose a profile picture. You can allow it in device settings.',
+          );
+          return;
+        }
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
-      });
+      };
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({
+            ...options,
+            cameraType: ImagePicker.CameraType.front,
+          })
+        : await ImagePicker.launchImageLibraryAsync(options);
       if (result.canceled) return;
 
       const asset = result.assets[0];
-      if (!asset?.uri) {
+      if (!asset) {
         setPhotoError('That photo could not be read. Choose another image.');
         return;
       }
-      if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
-        setPhotoError('Choose an image smaller than 5 MB.');
-        return;
-      }
-      if (asset.mimeType && !supportedProfilePhotoTypes.has(asset.mimeType.toLowerCase())) {
-        setPhotoError('Choose a JPEG, PNG, WebP or HEIC photo.');
-        return;
-      }
-
-      const resultUpdate = await updateProfilePhoto(asset.uri);
-      if (!resultUpdate.ok) setPhotoError(resultUpdate.error);
-      else setFailedAvatarUrl(null);
+      if (await uploadProfilePhoto(asset)) setPhotoMenuOpen(false);
     } catch {
-      setPhotoError('Your profile photo could not be updated. Try again.');
+      setPhotoError(
+        source === 'camera'
+          ? 'The camera could not be opened. Try choosing a photo instead.'
+          : 'Your profile photo could not be updated. Try again.',
+      );
     } finally {
       setPhotoAction(null);
     }
@@ -162,7 +201,10 @@ export default function AccountScreen() {
     try {
       const result = await updateProfilePhoto(null);
       if (!result.ok) setPhotoError(result.error);
-      else setFailedAvatarUrl(null);
+      else {
+        setFailedAvatarUrl(null);
+        setPhotoMenuOpen(false);
+      }
     } catch {
       setPhotoError('Your profile photo could not be removed. Try again.');
     } finally {
@@ -173,6 +215,18 @@ export default function AccountScreen() {
   const selectReportFilter = (value: ReportFilter) => {
     setReportFilter(value);
     void haptics.select();
+  };
+
+  const openPhotoMenu = () => {
+    if (!accountUser || photoAction) return;
+    setPhotoError('');
+    setPhotoMenuOpen(true);
+    void haptics.press();
+  };
+
+  const closePhotoMenu = () => {
+    if (photoAction) return;
+    setPhotoMenuOpen(false);
   };
 
   if (loading) return <RouteLoadingScreen label="Loading account" />;
@@ -192,41 +246,71 @@ export default function AccountScreen() {
 
         <View style={[styles.profile, { borderBottomColor: colors.lineSoft }]}>
           <View style={[styles.profileOverview, stackProfile && styles.profileOverviewStacked]}>
-            <View
-              accessibilityLabel={accountUser ? `Profile picture for ${accountUser.name}` : 'Guest profile picture'}
-              accessibilityRole="image"
-              style={[
-                styles.avatar,
-                {
-                  backgroundColor: accountUser ? colors.primary : colors.inset,
-                  borderColor: colors.lineSoft,
-                },
-              ]}
-            >
-              {accountUser ? (
-                <AppText
-                  accessibilityElementsHidden
-                  aria-hidden
-                  color={colors.onPrimary}
-                  variant="h2"
+            {accountUser ? (
+              <Pressable
+                accessibilityHint="Opens options to take a photo or choose one from your library"
+                accessibilityLabel={hasStoredAvatar ? 'Change profile picture' : 'Add profile picture'}
+                accessibilityRole="button"
+                disabled={Boolean(photoAction)}
+                onBlur={() => setAvatarFocused(false)}
+                onFocus={() => setAvatarFocused(true)}
+                onPress={openPhotoMenu}
+                style={({ hovered, pressed }) => [
+                  styles.avatarButton,
+                  focusRing(avatarFocused, colors.wine),
+                  hoverShadow(hovered, colors.black),
+                  { opacity: photoAction ? 0.6 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+                  Platform.OS === 'web' ? ({ cursor: 'pointer' } as ViewStyle) : null,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.avatar,
+                    { backgroundColor: colors.primary, borderColor: colors.lineSoft },
+                  ]}
                 >
-                  {initials}
-                </AppText>
-              ) : (
-                <UserRound aria-hidden color={colors.muted} size={42} strokeWidth={1.7} />
-              )}
-              {avatarVisible && accountUser?.avatarUrl ? (
-                <Image
-                  accessibilityElementsHidden
+                  <AppText
+                    accessibilityElementsHidden
+                    aria-hidden
+                    color={colors.onPrimary}
+                    variant="h2"
+                  >
+                    {initials}
+                  </AppText>
+                  {avatarVisible && accountUser.avatarUrl ? (
+                    <Image
+                      accessibilityElementsHidden
+                      aria-hidden
+                      contentFit="cover"
+                      onError={() => setFailedAvatarUrl(accountUser.avatarUrl ?? null)}
+                      source={{ uri: accountUser.avatarUrl }}
+                      style={styles.avatarImage}
+                      transition={120}
+                    />
+                  ) : null}
+                </View>
+                <View
                   aria-hidden
-                  contentFit="cover"
-                  onError={() => setFailedAvatarUrl(accountUser.avatarUrl ?? null)}
-                  source={{ uri: accountUser.avatarUrl }}
-                  style={styles.avatarImage}
-                  transition={120}
-                />
-              ) : null}
-            </View>
+                  style={[
+                    styles.avatarBadge,
+                    { backgroundColor: colors.surfaceStrong, borderColor: colors.canvas },
+                  ]}
+                >
+                  <Camera color={colors.wine} size={16} strokeWidth={2.5} />
+                </View>
+              </Pressable>
+            ) : (
+              <View
+                accessibilityLabel="Guest profile picture"
+                accessibilityRole="image"
+                style={[
+                  styles.avatar,
+                  { backgroundColor: colors.inset, borderColor: colors.lineSoft },
+                ]}
+              >
+                <UserRound aria-hidden color={colors.muted} size={42} strokeWidth={1.7} />
+              </View>
+            )}
 
             <View style={styles.profileStats}>
               <ProfileStat label="Reports" value={currentUserItems.length} />
@@ -257,28 +341,9 @@ export default function AccountScreen() {
           </View>
 
           {accountUser ? (
-            <View style={styles.photoActions}>
-              <SecondaryButton
-                disabled={Boolean(photoAction)}
-                fullWidth={compact}
-                icon={Camera}
-                loading={photoAction === 'change'}
-                onPress={() => void chooseProfilePhoto()}
-              >
-                {hasStoredAvatar ? 'Change photo' : 'Add photo'}
-              </SecondaryButton>
-              {hasStoredAvatar ? (
-                <TextButton
-                  disabled={Boolean(photoAction)}
-                  fullWidth={compact}
-                  icon={Trash2}
-                  loading={photoAction === 'remove'}
-                  onPress={() => void removeProfilePhoto()}
-                >
-                  Remove photo
-                </TextButton>
-              ) : null}
-            </View>
+            <AppText color={colors.muted} variant="support">
+              Tap your profile picture to update it.
+            </AppText>
           ) : null}
           {photoError ? (
             <AppText accessibilityLiveRegion="polite" color={colors.danger} variant="support">
@@ -363,6 +428,117 @@ export default function AccountScreen() {
           </View>
         ) : null}
       </ContentShell>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={closePhotoMenu}
+        transparent
+        visible={photoMenuOpen}
+      >
+        <View
+          style={[
+            styles.modalRoot,
+            {
+              backgroundColor: colors.scrim,
+              paddingTop: Math.max(insets.top, spacing.md),
+              paddingBottom: Math.max(insets.bottom, spacing.md),
+            },
+          ]}
+        >
+          <Pressable
+            accessibilityElementsHidden
+            accessible={false}
+            aria-hidden
+            disabled={Boolean(photoAction)}
+            focusable={false}
+            onPress={closePhotoMenu}
+            style={StyleSheet.absoluteFill}
+          />
+          <View
+            accessibilityViewIsModal
+            onAccessibilityEscape={closePhotoMenu}
+            style={[
+              styles.photoSheet,
+              {
+                backgroundColor: colors.surfaceStrong,
+                borderColor: colors.lineSoft,
+                ...raisedShadow('lg', colors.black),
+              },
+            ]}
+          >
+            <ScrollView
+              bounces={false}
+              contentContainerStyle={styles.photoSheetContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.photoSheetHeading}>
+                <View style={styles.photoSheetCopy}>
+                  <AppText accessibilityRole="header" color={colors.ink} variant="h3">
+                    Profile photo
+                  </AppText>
+                  <AppText color={colors.muted} variant="support">
+                    Take a new picture or choose one you already have.
+                  </AppText>
+                </View>
+                <IconButton
+                  accessibilityLabel="Close profile photo options"
+                  disabled={Boolean(photoAction)}
+                  icon={X}
+                  onPress={closePhotoMenu}
+                />
+              </View>
+
+              {photoError ? (
+                <AppText accessibilityLiveRegion="polite" color={colors.danger} variant="support">
+                  {photoError}
+                </AppText>
+              ) : null}
+
+              <View style={styles.photoSheetActions}>
+                <SecondaryButton
+                  accessibilityHint="Opens your device camera"
+                  disabled={Boolean(photoAction)}
+                  fullWidth
+                  icon={Camera}
+                  loading={photoAction === 'camera'}
+                  onPress={() => void chooseProfilePhoto('camera')}
+                >
+                  Take a photo
+                </SecondaryButton>
+                <SecondaryButton
+                  accessibilityHint="Opens your photo library"
+                  disabled={Boolean(photoAction)}
+                  fullWidth
+                  icon={ImagePlus}
+                  loading={photoAction === 'library'}
+                  onPress={() => void chooseProfilePhoto('library')}
+                >
+                  Choose from library
+                </SecondaryButton>
+                {hasStoredAvatar ? (
+                  <TextButton
+                    danger
+                    disabled={Boolean(photoAction)}
+                    fullWidth
+                    icon={Trash2}
+                    loading={photoAction === 'remove'}
+                    onPress={() => void removeProfilePhoto()}
+                  >
+                    Remove current photo
+                  </TextButton>
+                ) : null}
+                <TextButton
+                  disabled={Boolean(photoAction)}
+                  fullWidth
+                  onPress={closePhotoMenu}
+                >
+                  Cancel
+                </TextButton>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -487,6 +663,15 @@ const styles = StyleSheet.create({
   profile: { gap: spacing.md, paddingBottom: spacing.xl, borderBottomWidth: 1 },
   profileOverview: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   profileOverviewStacked: { flexDirection: 'column', alignItems: 'stretch', gap: spacing.md },
+  avatarButton: {
+    position: 'relative',
+    width: 88,
+    height: 88,
+    flexShrink: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    borderRadius: radius.pill,
+  },
   avatar: {
     position: 'relative',
     width: 80,
@@ -497,6 +682,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: radius.pill,
     borderWidth: 2,
+  },
+  avatarBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    borderWidth: 3,
   },
   avatarImage: {
     position: 'absolute',
@@ -517,7 +713,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xxs,
   },
   verifiedText: { flex: 1 },
-  photoActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   reportsSection: { gap: spacing.lg },
   reportTabs: {
     flexDirection: 'row',
@@ -564,4 +759,27 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   flexCopy: { flex: 1, minWidth: 0 },
+  modalRoot: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.md,
+  },
+  photoSheet: {
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '100%',
+    overflow: 'hidden',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+  },
+  photoSheetContent: { gap: spacing.lg, padding: spacing.lg },
+  photoSheetHeading: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  photoSheetCopy: { flex: 1, minWidth: 0, gap: spacing.xxs },
+  photoSheetActions: { gap: spacing.xs },
 });
